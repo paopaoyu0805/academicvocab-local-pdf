@@ -12,8 +12,9 @@
 ## 当前安全状态
 
 - 阶段 3“Zotero 标记所有权技术验证”已完成。
-- 最新提交：`8441a71bc125c3ba71087b96aacea2061a1f82c5`
-- 提交信息：`feat: verify Zotero marker ownership safeguards`
+- 阶段 3 实现提交：`8441a71bc125c3ba71087b96aacea2061a1f82c5`
+- 实现提交信息：`feat: verify Zotero marker ownership safeguards`
+- 恢复时以当前 Git `HEAD` 和 C 盘最近项目索引记录的提交为最新仓库状态。
 - 交接创建前工作区干净。
 - 开发 Zotero 已关闭。
 - 日常 Zotero 和开发 Zotero 均为 `9.0.6`。
