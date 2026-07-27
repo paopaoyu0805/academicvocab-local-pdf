@@ -1,12 +1,13 @@
 {
   "manifest_version": 2,
   "name": "AcademicVocab Selection POC",
-  "version": "0.1.1",
+  "version": "0.2.7",
   "description": "Offline Zotero text-selection popup proof of concept. It never saves or translates data.",
   "author": "AcademicVocab",
   "applications": {
     "zotero": {
       "id": "academicvocab-selection-poc@academicvocab.local",
+      "update_url": "https://academicvocab.invalid/zotero-selection-poc-updates.json",
       "strict_min_version": "8.999",
       "strict_max_version": "10.0.*"
     }

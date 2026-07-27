@@ -23,6 +23,8 @@
 
 通过标准：所有信息只显示在临时界面中，关闭后无永久改动；Zotero 重启和日常 Zotero 使用均不受影响。
 
+验收记录：0.2.7 已于 2026-07-28 在隔离开发 Zotero 9.0.6 与受控测试 PDF 中通过；详细结果见 `docs\STAGE2B_SENTENCE_EXTRACTION.md`。
+
 ## 3. 阶段 3：Zotero 标记所有权技术验证
 
 仍只使用隔离开发 Zotero 和测试 PDF，验证：
