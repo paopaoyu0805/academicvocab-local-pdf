@@ -5,7 +5,7 @@
 3. 所有 Node、npm、npx 和 Git 操作必须通过 D 盘包装脚本。
 4. 安装依赖前必须运行 `tools\check-paths.ps1`。
 5. 只使用免费软件、开源依赖和免费服务方案。
-6. 不使用付费短信、付费 OCR、付费词典 API 或 OpenAI API。
+6. 不使用付费短信、付费 OCR、OpenAI API 或其他会自动产生费用的接口。腾讯机器翻译是唯一已批准的自动翻译服务，但只能在后付费关闭、服务端密钥隔离和项目每月 500000 字符硬上限生效后使用；达到上限立即停止。
 7. 不使用 Docker、WSL、Android Studio、Xcode、Expo 或 React Native。
 8. 不使用本地 Supabase。
 9. 第一版不上传 PDF 到云端。
@@ -25,3 +25,6 @@
 23. 不得使用 Supabase `service_role` key 作为前端密钥。
 24. Zotero 插件只能删除 `marker_owner` 明确属于 AcademicVocab 的标注。
 25. “不再复习”不能删除生词、例句、来源和历史。
+26. 腾讯及其他外部服务的真实密钥只能存放在未来的服务端 Secrets 中，不得进入 PWA、Zotero 插件、数据库、日志、项目文件或 Git。
+27. 自动翻译只允许发送用户确认收录的单词和单条例句，不得发送 PDF、全文或 Zotero 数据库内容。
+28. AcademicVocab 不读取或依赖 Magic、Translate for Zotero 等第三方插件的账号、密钥或未公开内部接口。
