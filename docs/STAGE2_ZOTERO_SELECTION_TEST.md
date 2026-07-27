@@ -42,7 +42,7 @@
 开发 Zotero 打开后：
 
 1. 选择“工具 → 插件”；
-2. 确认能看到 `AcademicVocab Selection POC 0.1.0`；
+2. 确认能看到 `AcademicVocab Selection POC 0.1.1`；
 3. 确认它处于启用状态；
 4. 如果看到了日常文献或正式账户，立即退出，不要继续。
 

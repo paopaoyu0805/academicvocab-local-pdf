@@ -1,3 +1,7 @@
+param(
+    [switch]$RequireInstalled
+)
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -5,7 +9,7 @@ $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $manifestPath = Join-Path $source 'manifest.json'
 $bootstrapPath = Join-Path $source 'bootstrap.js'
 $proxy = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local'
-$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.xpi'
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.1.xpi'
 $installedXPI = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local.xpi'
 $expectedPluginID = 'academicvocab-selection-poc@academicvocab.local'
 
@@ -29,10 +33,10 @@ Assert-SelectionCheck (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) 'bo
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $zoteroConfig = $manifest.applications.zotero
 Assert-SelectionCheck ($manifest.manifest_version -eq 2) 'manifest version is supported'
-Assert-SelectionCheck ($manifest.version -eq '0.1.0') 'POC version is 0.1.0'
+Assert-SelectionCheck ($manifest.version -eq '0.1.1') 'POC version is 0.1.1'
 Assert-SelectionCheck ($zoteroConfig.id -eq $expectedPluginID) 'plugin ID is exact'
-Assert-SelectionCheck ($zoteroConfig.strict_min_version -eq '9.0') 'minimum Zotero version is 9.0'
-Assert-SelectionCheck ($zoteroConfig.strict_max_version -eq '9.0.*') 'maximum tested Zotero version is 9.0.*'
+Assert-SelectionCheck ($zoteroConfig.strict_min_version -eq '8.999') 'minimum Zotero version follows the current Zotero 9 plugin convention'
+Assert-SelectionCheck ($zoteroConfig.strict_max_version -eq '10.0.*') 'maximum Zotero version follows the current Zotero 9 plugin convention'
 Assert-SelectionCheck ($zoteroConfig.PSObject.Properties.Name -notcontains 'update_url') 'manifest has no update URL'
 
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw -Encoding UTF8
@@ -60,11 +64,17 @@ foreach ($pattern in $forbiddenPatterns) {
 
 Assert-SelectionCheck (-not (Test-Path -LiteralPath $proxy)) 'unreliable development source proxy is absent'
 Assert-SelectionCheck (Test-Path -LiteralPath $builtXPI -PathType Leaf) 'built XPI exists on D drive'
-Assert-SelectionCheck (Test-Path -LiteralPath $installedXPI -PathType Leaf) 'development-only installed XPI exists'
-Assert-SelectionCheck (
-    (Get-FileHash -LiteralPath $builtXPI -Algorithm SHA256).Hash -eq
-    (Get-FileHash -LiteralPath $installedXPI -Algorithm SHA256).Hash
-) 'installed XPI exactly matches the verified build'
-Assert-SelectionCheck ($installedXPI.StartsWith('D:\AcademicVocab\', [System.StringComparison]::OrdinalIgnoreCase)) 'installed XPI is under the D-drive project root'
+
+if ($RequireInstalled) {
+    Assert-SelectionCheck (Test-Path -LiteralPath $installedXPI -PathType Leaf) 'development-only installed XPI exists'
+    Assert-SelectionCheck (
+        (Get-FileHash -LiteralPath $builtXPI -Algorithm SHA256).Hash -eq
+        (Get-FileHash -LiteralPath $installedXPI -Algorithm SHA256).Hash
+    ) 'installed XPI exactly matches the verified build'
+    Assert-SelectionCheck ($installedXPI.StartsWith('D:\AcademicVocab\', [System.StringComparison]::OrdinalIgnoreCase)) 'installed XPI is under the D-drive project root'
+}
+else {
+    Write-Host 'SKIP: installed-XPI check awaits manual Zotero confirmation.'
+}
 
 Write-Host 'ALL ZOTERO SELECTION POC CHECKS PASSED.'

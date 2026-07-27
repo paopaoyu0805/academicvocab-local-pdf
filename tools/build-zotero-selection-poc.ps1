@@ -3,8 +3,9 @@ Set-StrictMode -Version Latest
 
 $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $buildDirectory = 'D:\AcademicVocab\zotero-dev\builds'
-$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.xpi'
-$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.zip'
+$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.1.xpi'
+$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.1.zip'
+$supersededOutput = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.xpi'
 
 if (-not (Test-Path -LiteralPath $source -PathType Container)) {
     throw "Plugin source directory is missing: $source"
@@ -24,6 +25,10 @@ if (Test-Path -LiteralPath $temporaryZip) {
 
 Compress-Archive -Path (Join-Path $source '*') -DestinationPath $temporaryZip -CompressionLevel Optimal
 Move-Item -LiteralPath $temporaryZip -Destination $output
+
+if (Test-Path -LiteralPath $supersededOutput) {
+    Remove-Item -LiteralPath $supersededOutput -Force
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($output)
