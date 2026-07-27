@@ -3,7 +3,7 @@ Set-StrictMode -Version Latest
 
 $root = 'D:\AcademicVocab'
 $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
-$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.2.7.xpi'
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.xpi'
 
 if (Get-Process -Name zotero -ErrorAction SilentlyContinue) {
     throw 'Close every Zotero window before preparing the development plugin.'

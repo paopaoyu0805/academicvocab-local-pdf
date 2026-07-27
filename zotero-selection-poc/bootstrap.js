@@ -4,11 +4,18 @@ var AcademicVocabSelectionPOC = {
   registered: false,
   liveNodes: new Set(),
   nodeCleanups: new Map(),
+  markerLedgerPref: "extensions.academicvocab-selection-poc.markerLedger.v1",
+  markerOwner: "AcademicVocab",
+  markerColor: "#8b5cf6",
+  markerType: "underline",
+  devProfilePrefix: "D:\\AcademicVocab\\zotero-dev\\profile",
 
   start() {
     if (this.registered) {
       return;
     }
+
+    this.assertIsolatedDevelopmentProfile();
 
     Zotero.Reader.registerEventListener(
       this.eventType,
@@ -49,7 +56,7 @@ var AcademicVocabSelectionPOC = {
       button.id = "academicvocab-selection-poc-button";
       button.type = "button";
       button.textContent = "AcademicVocab 验证";
-      button.title = "打开临时选词信息；不会保存、翻译或创建标注";
+      button.title = "打开本地例句预览；只有明确确认后才会在隔离测试 PDF 创建测试高亮";
       button.style.cssText = [
         "margin: 4px",
         "padding: 6px 10px",
@@ -100,6 +107,15 @@ var AcademicVocabSelectionPOC = {
       reasons: ["no_candidate"]
     };
     let metadata = await this.getAttachmentMetadata(reader, annotation);
+    let markerContext = null;
+    let markerContextError = null;
+    try {
+      markerContext = await this.getMarkerContext(reader, annotation);
+    }
+    catch (error) {
+      Zotero.logError(error);
+      markerContextError = "无法安全取得隔离测试标记所需的位置；不会创建高亮。";
+    }
 
     let overlay = doc.createElement("div");
     overlay.id = "academicvocab-selection-poc-overlay";
@@ -160,7 +176,7 @@ var AcademicVocabSelectionPOC = {
 
     let notice = doc.createElement("p");
     notice.textContent =
-      "本地预览：候选只在当前窗口中显示。关闭后不会保存、翻译、联网或创建标注。";
+      "本地预览：候选不会保存、翻译或联网。只有下方明确确认的隔离测试按钮才会创建一条测试高亮。";
     notice.style.cssText = [
       "margin: 0 0 16px",
       "padding: 10px",
@@ -222,6 +238,10 @@ var AcademicVocabSelectionPOC = {
       this.createReadOnlyField(doc, "选区位置（仅临时显示）", metadata.positionJSON, true)
     );
     panel.append(technicalDetails);
+
+    panel.append(
+      this.createMarkerTestControls(doc, markerContext, markerContextError)
+    );
 
     let extractionNote = doc.createElement("p");
     if (pageContext.errorCode) {
@@ -546,6 +566,565 @@ var AcademicVocabSelectionPOC = {
     keepVisible();
   },
 
+  assertIsolatedDevelopmentProfile() {
+    let profileDirectory = Services.dirsvc.get(
+      "ProfD",
+      Components.interfaces.nsIFile
+    ).path;
+    let normalizedProfile = profileDirectory.replace(/[\\/]+$/, "");
+    if (!normalizedProfile.toLocaleLowerCase().startsWith(
+      this.devProfilePrefix.toLocaleLowerCase()
+    )) {
+      throw new Error("AcademicVocab marker testing is restricted to the D-drive development profile");
+    }
+    return normalizedProfile;
+  },
+
+  loadMarkerLedger() {
+    this.assertIsolatedDevelopmentProfile();
+    let raw = Services.prefs.getStringPref(this.markerLedgerPref, "");
+    if (!raw) {
+      return AcademicVocabMarkerOwnership.newLedger();
+    }
+    let ledger;
+    try {
+      ledger = JSON.parse(raw);
+    }
+    catch (error) {
+      throw new Error("AcademicVocab test marker ledger is unreadable; refusing marker changes");
+    }
+    if (
+      !ledger
+      || ledger.schemaVersion !== 1
+      || ledger.markerOwner !== this.markerOwner
+      || !ledger.records
+      || typeof ledger.records !== "object"
+    ) {
+      throw new Error("AcademicVocab test marker ledger has an unexpected format; refusing marker changes");
+    }
+    return ledger;
+  },
+
+  saveMarkerLedger(ledger) {
+    this.assertIsolatedDevelopmentProfile();
+    if (
+      !ledger
+      || ledger.schemaVersion !== 1
+      || ledger.markerOwner !== this.markerOwner
+      || !ledger.records
+    ) {
+      throw new Error("Refusing to save an invalid AcademicVocab test marker ledger");
+    }
+    Services.prefs.setStringPref(
+      this.markerLedgerPref,
+      JSON.stringify(ledger)
+    );
+  },
+
+  async sha256Hex(value) {
+    if (!globalThis.crypto || !globalThis.crypto.subtle) {
+      throw new Error("Web Crypto is unavailable; refusing marker ownership changes");
+    }
+    let input = new TextEncoder().encode(String(value));
+    let digest = await globalThis.crypto.subtle.digest("SHA-256", input);
+    return Array.from(new Uint8Array(digest))
+      .map(byte => byte.toString(16).padStart(2, "0"))
+      .join("");
+  },
+
+  async getMarkerContext(reader, annotation) {
+    this.assertIsolatedDevelopmentProfile();
+    let attachment = reader && reader.itemID
+      ? Zotero.Items.get(reader.itemID)
+      : null;
+    let position = AcademicVocabMarkerOwnership.parsePosition(
+      annotation && annotation.position
+    );
+    let selectedText = this.normalizeText(annotation && annotation.text);
+    if (
+      !attachment
+      || !attachment.isFileAttachment()
+      || !attachment.libraryID
+      || !attachment.key
+      || !position
+      || !Number.isInteger(position.pageIndex)
+      || !selectedText
+    ) {
+      throw new Error("The current selection cannot be used for a safe test marker");
+    }
+    let parent = attachment.parentItemID
+      ? Zotero.Items.get(attachment.parentItemID)
+      : null;
+    return {
+      attachment,
+      libraryID: attachment.libraryID,
+      attachmentKey: attachment.key,
+      parentItemKey: parent ? parent.key : "",
+      pageIndex: position.pageIndex,
+      pageLabel: String(position.pageIndex + 1),
+      position,
+      selectedText
+    };
+  },
+
+  async getCaptureID(context) {
+    let seed = AcademicVocabMarkerOwnership.makeCaptureSeed(context);
+    return `stage3-${(await this.sha256Hex(seed)).slice(0, 32)}`;
+  },
+
+  getLedgerRecordForContext(ledger, context, captureID) {
+    if (ledger.records[captureID]) {
+      return ledger.records[captureID];
+    }
+    let legacyMatches = Object.values(ledger.records).filter(record =>
+      AcademicVocabMarkerOwnership.matchesLegacyContextRecord(record, context)
+    );
+    // A coordinate-normalization migration is safe only when the ledger has
+    // exactly one owned record for this attachment and selected position.
+    return legacyMatches.length === 1 ? legacyMatches[0] : null;
+  },
+
+  makeMarkerSnapshot(
+    context,
+    annotationKey,
+    color = this.markerColor,
+    type = this.markerType
+  ) {
+    return {
+      annotationKey,
+      attachmentKey: context.attachmentKey,
+      color,
+      comment: "",
+      libraryID: context.libraryID,
+      pageLabel: context.pageLabel,
+      position: AcademicVocabMarkerOwnership.cloneJSON(context.position),
+      text: context.selectedText,
+      type
+    };
+  },
+
+  snapshotFromAnnotationItem(item) {
+    if (!item || !item.isAnnotation() || !item.parentKey) {
+      return null;
+    }
+    let position = AcademicVocabMarkerOwnership.parsePosition(
+      item.annotationPosition
+    );
+    if (!position) {
+      return null;
+    }
+    return {
+      annotationKey: item.key,
+      attachmentKey: item.parentKey,
+      color: item.annotationColor || "",
+      comment: item.annotationComment || "",
+      libraryID: item.libraryID,
+      pageLabel: item.annotationPageLabel || "",
+      position,
+      text: item.annotationText || "",
+      type: item.annotationType || ""
+    };
+  },
+
+  async signatureForSnapshot(snapshot) {
+    return this.sha256Hex(
+      AcademicVocabMarkerOwnership.canonicalJSONString(snapshot)
+    );
+  },
+
+  findOverlappingAnnotation(attachment, targetPosition) {
+    for (let annotation of attachment.getAnnotations(false)) {
+      if (!annotation || !annotation.isAnnotation()) {
+        continue;
+      }
+      if (AcademicVocabMarkerOwnership.positionsOverlap(
+        targetPosition,
+        annotation.annotationPosition
+      )) {
+        return annotation;
+      }
+    }
+    return null;
+  },
+
+  getAnnotationByExactKey(record) {
+    if (!record || !record.libraryID || !record.annotationKey) {
+      return null;
+    }
+    return Zotero.Items.getByLibraryAndKey(
+      record.libraryID,
+      record.annotationKey
+    );
+  },
+
+  async verifyOwnedTestMarker(ledger, record) {
+    if (!record || record.markerOwner !== this.markerOwner) {
+      return { code: "ledger_missing_or_unowned", record: null, item: null };
+    }
+    let item = this.getAnnotationByExactKey(record);
+    if (!item) {
+      if (record.status === "active") {
+        record.status = "removed";
+        record.updatedAt = new Date().toISOString();
+        this.saveMarkerLedger(ledger);
+      }
+      return { code: "exact_marker_missing", record, item: null };
+    }
+
+    let snapshot = this.snapshotFromAnnotationItem(item);
+    let signature = snapshot ? await this.signatureForSnapshot(snapshot) : "";
+    let isExactMatch = Boolean(
+      snapshot
+      && record.libraryID === snapshot.libraryID
+      && record.attachmentKey === snapshot.attachmentKey
+      && record.annotationKey === snapshot.annotationKey
+      && record.markerSignature === signature
+    );
+    if (!isExactMatch) {
+      let expectedColorSnapshot = {
+        ...snapshot,
+        color: record.markerColor
+      };
+      let expectedColorSignature = snapshot
+        ? await this.signatureForSnapshot(expectedColorSnapshot)
+        : "";
+      if (expectedColorSignature === record.markerSignature) {
+        return { code: "color_changed", record, item };
+      }
+      let legacyExpectedColorSignature = snapshot
+        ? await this.sha256Hex(
+          AcademicVocabMarkerOwnership.legacyCanonicalJSONString({
+            ...snapshot,
+            color: record.markerColor,
+            position: AcademicVocabMarkerOwnership.cloneJSON(record.position)
+          })
+        )
+        : "";
+      if (legacyExpectedColorSignature === record.markerSignature) {
+        // This is a one-time compatibility migration for a record written
+        // before Zotero coordinate normalization. Every non-color field has
+        // still been checked by the legacy signature before it is migrated.
+        record.markerSignature = expectedColorSignature;
+        record.updatedAt = new Date().toISOString();
+        this.saveMarkerLedger(ledger);
+        return { code: "color_changed", record, item };
+      }
+      record.status = "protected_modified";
+      record.updatedAt = new Date().toISOString();
+      this.saveMarkerLedger(ledger);
+      return { code: "protected_modified", record, item };
+    }
+    if (record.status === "removed") {
+      return { code: "removal_refused", record, item };
+    }
+    if (record.status !== "active") {
+      record.status = "active";
+      record.updatedAt = new Date().toISOString();
+      this.saveMarkerLedger(ledger);
+    }
+    return { code: "verified", record, item };
+  },
+
+  async verifyOrRestoreOwnedMarker(context) {
+    let ledger = this.loadMarkerLedger();
+    let captureID = await this.getCaptureID(context);
+    let record = this.getLedgerRecordForContext(ledger, context, captureID);
+    let verification = await this.verifyOwnedTestMarker(ledger, record);
+    if (verification.code !== "color_changed") {
+      return { ...verification, captureID };
+    }
+    verification.item.annotationColor = verification.record.markerColor;
+    await verification.item.saveTx();
+    let restored = await this.verifyOwnedTestMarker(ledger, verification.record);
+    if (restored.code !== "verified") {
+      return { ...restored, captureID };
+    }
+    return {
+      code: "purple_restored",
+      captureID,
+      record: restored.record,
+      item: restored.item
+    };
+  },
+
+  async createOrResumeOwnedTestMarker(context) {
+    let ledger = this.loadMarkerLedger();
+    let captureID = await this.getCaptureID(context);
+    let record = this.getLedgerRecordForContext(ledger, context, captureID);
+
+    if (record) {
+      let verification = await this.verifyOwnedTestMarker(ledger, record);
+      if (verification.code === "verified") {
+        return {
+          code: "already_active",
+          captureID,
+          record: verification.record
+        };
+      }
+      if (verification.code === "protected_modified") {
+        return {
+          code: "protected_modified",
+          captureID,
+          record: verification.record
+        };
+      }
+      if (
+        verification.code === "exact_marker_missing"
+        && AcademicVocabMarkerOwnership.canRecreateRemovedRecord(record)
+      ) {
+        // The user explicitly pressed Create after a previously verified
+        // plugin marker was deleted. Create a fresh exact key; never search
+        // for or alter any other Zotero annotation.
+        record.status = "intent";
+        record.annotationKey = Zotero.DataObjectUtilities.generateKey();
+        record.markerColor = this.markerColor;
+        record.markerType = this.markerType;
+        record.updatedAt = new Date().toISOString();
+        this.saveMarkerLedger(ledger);
+      }
+      if (record.status !== "intent") {
+        return {
+          code: verification.code,
+          captureID,
+          record
+        };
+      }
+    }
+
+    let overlapsExistingAnnotation = Boolean(this.findOverlappingAnnotation(
+      context.attachment,
+      context.position
+    ));
+
+    let annotationKey = record ? record.annotationKey : Zotero.DataObjectUtilities.generateKey();
+    let markerType = record && record.markerType
+      ? record.markerType
+      : this.markerType;
+    let snapshot = this.makeMarkerSnapshot(
+      context,
+      annotationKey,
+      this.markerColor,
+      markerType
+    );
+    let signature = await this.signatureForSnapshot(snapshot);
+    if (!record) {
+      record = {
+        id: captureID,
+        markerOwner: this.markerOwner,
+        status: "intent",
+        wordID: "stage3-test-word",
+        exampleID: "stage3-test-example",
+        libraryID: context.libraryID,
+        parentItemKey: context.parentItemKey,
+        attachmentKey: context.attachmentKey,
+        annotationKey,
+        pageIndex: context.pageIndex,
+        position: AcademicVocabMarkerOwnership.cloneJSON(context.position),
+        markerColor: this.markerColor,
+        markerType,
+        markerSignature: signature,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      ledger.records[captureID] = record;
+      this.saveMarkerLedger(ledger);
+    }
+    else if (record.status === "intent") {
+      record.markerColor = this.markerColor;
+      record.markerType = markerType;
+      record.markerSignature = signature;
+      record.position = AcademicVocabMarkerOwnership.cloneJSON(context.position);
+      record.updatedAt = new Date().toISOString();
+      delete record.lastError;
+      this.saveMarkerLedger(ledger);
+    }
+
+    try {
+      await Zotero.Annotations.saveFromJSON(context.attachment, {
+        key: annotationKey,
+        type: record.markerType || this.markerType,
+        isExternal: false,
+        text: context.selectedText,
+        comment: "",
+        color: record.markerColor,
+        pageLabel: context.pageLabel,
+        sortIndex: "00000|000000|00000",
+        position: AcademicVocabMarkerOwnership.cloneJSON(context.position),
+        tags: []
+      });
+    }
+    catch (error) {
+      record.updatedAt = new Date().toISOString();
+      record.lastError = "annotation_create_failed";
+      this.saveMarkerLedger(ledger);
+      throw error;
+    }
+
+    let verification = await this.verifyOwnedTestMarker(ledger, record);
+    if (verification.code !== "verified") {
+      return { code: verification.code, captureID, record: verification.record };
+    }
+    delete record.lastError;
+    this.saveMarkerLedger(ledger);
+    return {
+      code: "created",
+      captureID,
+      record,
+      overlapsExistingAnnotation
+    };
+  },
+
+  async removeOwnedTestMarker(context) {
+    let ledger = this.loadMarkerLedger();
+    let captureID = await this.getCaptureID(context);
+    let record = this.getLedgerRecordForContext(ledger, context, captureID);
+    if (!AcademicVocabMarkerOwnership.canRemoveRecord(record)) {
+      return { code: "removal_refused", captureID, record: record || null };
+    }
+    let verification = await this.verifyOwnedTestMarker(ledger, record);
+    if (verification.code === "exact_marker_missing") {
+      return { code: "already_missing", captureID, record: verification.record };
+    }
+    if (verification.code !== "verified") {
+      return { code: verification.code, captureID, record: verification.record };
+    }
+    await verification.item.eraseTx();
+    record.status = "removed";
+    record.updatedAt = new Date().toISOString();
+    this.saveMarkerLedger(ledger);
+    return { code: "removed", captureID, record };
+  },
+
+  markerResultMessage(result) {
+    let messages = {
+      created: "已创建一条隔离测试高亮，并已写入本地所有权账本。",
+      already_active: "该精确选区已有已核验的 AcademicVocab 测试高亮；没有重复创建。",
+      overlap_detected: "检测到选区与已有 Zotero 标注重叠；为保护人工标注，未创建测试高亮。",
+      verified: "账本、附件 key、annotation key 和签名完全一致；该测试高亮可被安全处理。",
+      protected_modified: "该测试高亮已被修改或无法精确核验；已受保护，拒绝删除。",
+      color_changed: "该生词标记颜色已变化；将只恢复本插件已精确核验标记的紫色。",
+      purple_restored: "已恢复这条已精确核验 AcademicVocab 生词标记的紫色；未修改任何其他 Zotero 标注。",
+      exact_marker_missing: "账本中的精确测试高亮已不存在；没有搜索或处理其他标注。",
+      already_missing: "精确测试高亮已不存在；按幂等规则完成，没有处理其他标注。",
+      removed: "已按精确 annotation key 删除本插件创建且已核验的测试高亮。",
+      removal_refused: "账本不存在、所有者不匹配或状态不允许；拒绝删除。",
+      ledger_missing_or_unowned: "无法证明该标记属于 AcademicVocab；拒绝处理。"
+    };
+    return messages[result.code] || "测试标记操作未完成；没有处理其他标注。";
+  },
+
+  createMarkerTestControls(doc, context, contextError) {
+    let section = doc.createElement("section");
+    section.style.cssText = [
+      "margin: 0 0 14px",
+      "padding: 10px",
+      "border: 1px solid #c7d2fe",
+      "border-radius: 8px",
+      "background: #eef2ff"
+    ].join(";");
+    let heading = doc.createElement("h3");
+    heading.textContent = "阶段 3：隔离测试高亮";
+    heading.style.cssText = "margin: 0 0 6px; font-size: 13px;";
+    let explanation = doc.createElement("p");
+    explanation.textContent =
+      "仅用于 D 盘隔离开发资料库。生词标记固定为紫色；只恢复已精确核验的自有标记，绝不改动其他 Zotero 标注。";
+    explanation.style.cssText = "margin: 0 0 8px; color: #3730a3; font-size: 12px; line-height: 1.45;";
+    let status = doc.createElement("p");
+    status.setAttribute("role", "status");
+    status.style.cssText = "margin: 0 0 8px; color: #3730a3; font-size: 12px; line-height: 1.45;";
+    section.append(heading, explanation, status);
+
+    if (!context) {
+      status.textContent = contextError || "当前选区不能用于安全测试高亮。";
+      section.append(this.createReadOnlyField(doc, "测试状态", status.textContent));
+      return section;
+    }
+
+    let actions = doc.createElement("div");
+    actions.style.cssText = "display: flex; flex-wrap: wrap; gap: 6px;";
+    let createButton = this.createMarkerActionButton(
+      doc,
+      "创建测试高亮",
+      "#4f46e5"
+    );
+    let verifyButton = this.createMarkerActionButton(
+      doc,
+      "核验所有权",
+      "#475569"
+    );
+    let removeButton = this.createMarkerActionButton(
+      doc,
+      "删除已核验测试高亮",
+      "#b91c1c"
+    );
+    actions.append(createButton, verifyButton, removeButton);
+    section.append(actions);
+
+    let setStatus = result => {
+      status.textContent = this.markerResultMessage(result);
+      status.style.color = ["created", "verified", "already_active", "removed", "already_missing"].includes(result.code)
+        ? "#166534"
+        : "#9a3412";
+    };
+    let setBusy = busy => {
+      createButton.disabled = busy;
+      verifyButton.disabled = busy;
+      removeButton.disabled = busy;
+    };
+    let run = async action => {
+      setBusy(true);
+      try {
+        setStatus(await action());
+      }
+      catch (error) {
+        Zotero.logError(error);
+        status.textContent = "操作失败；没有删除或处理其他标注。请保留当前状态并报告错误。";
+        status.style.color = "#9a3412";
+      }
+      finally {
+        setBusy(false);
+      }
+    };
+
+    createButton.addEventListener("click", () => {
+      if (!doc.defaultView.confirm(
+        "只会在当前隔离开发资料库的测试 PDF 创建一条高亮，并写入插件账本。继续吗？"
+      )) {
+        return;
+      }
+      run(() => this.createOrResumeOwnedTestMarker(context));
+    });
+    verifyButton.addEventListener("click", () =>
+      run(() => this.verifyOrRestoreOwnedMarker(context))
+    );
+    removeButton.addEventListener("click", () => {
+      if (!doc.defaultView.confirm(
+        "仅在账本、精确 annotation key 和签名全部一致时删除本插件创建的测试高亮。继续吗？"
+      )) {
+        return;
+      }
+      run(() => this.removeOwnedTestMarker(context));
+    });
+    status.textContent = "尚未创建测试高亮。";
+    return section;
+  },
+
+  createMarkerActionButton(doc, text, background) {
+    let button = doc.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.style.cssText = [
+      "padding: 7px 9px",
+      "border: 0",
+      "border-radius: 6px",
+      `background: ${background}`,
+      "color: white",
+      "font: 12px sans-serif",
+      "cursor: pointer"
+    ].join(";");
+    return button;
+  },
+
   createField(doc, labelText, value, multiline) {
     let wrapper = doc.createElement("label");
     wrapper.style.cssText =
@@ -771,8 +1350,12 @@ var AcademicVocabSelectionPOC = {
 
 async function startup({ rootURI }) {
   Services.scriptloader.loadSubScript(rootURI + "sentence-extractor.js");
+  Services.scriptloader.loadSubScript(rootURI + "marker-ownership.js");
   if (typeof AcademicVocabSentenceExtractor === "undefined") {
     throw new Error("AcademicVocab sentence extractor failed to load");
+  }
+  if (typeof AcademicVocabMarkerOwnership === "undefined") {
+    throw new Error("AcademicVocab marker ownership module failed to load");
   }
   AcademicVocabSelectionPOC.start();
 }

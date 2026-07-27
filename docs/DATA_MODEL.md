@@ -138,7 +138,28 @@
 - 同一句子在不同论文或不同页码出现时可以分别保留；
 - 机器翻译不得覆盖 `user_translation_zh`。
 
-## 7. tags 与 word_tags
+## 7. capture_batches
+
+一次由用户明确确认的保存操作是一条摘录批次，而不是多次“再遇”。同一批次可以为同一单词保存多条例句。
+
+主要字段：
+
+- `id`、`user_id`、`word_id`；
+- `document_id`：可为空，手动来源时为空；
+- `capture_ordinal`：同一单词的第几次摘录批次，从 1 开始；
+- `example_count`：该批次实际新增且未被查重合并的例句数；
+- `created_at`。
+
+约束：
+
+- `user_id + word_id + capture_ordinal` 唯一；
+- 用户在一次确认中导入 5 条同词例句，计为 1 个批次、5 条例句，而不是“再遇 5 次”；
+- 完全重复的例句先按 `examples.dedupe_key` 合并，再计算 `example_count`；
+- 单词为 `mastered` 时，新批次仍保存例句、来源和批次历史，但不自动恢复进复习队列。
+
+界面应优先显示“已掌握 · 再遇 X 批 · 共 Y 条例句”。用户再次遇到已掌握词时，可以明确选择“保持已掌握”或“重新复习”。
+
+## 8. tags 与 word_tags
 
 `tags` 主要字段：
 
@@ -160,7 +181,7 @@
 - `user_id + word_id + tag_id` 唯一；
 - 外键对应的 word 和 tag 必须属于同一个用户。
 
-## 8. review_states 与 review_events
+## 9. review_states 与 review_events
 
 `review_states` 每个单词最多一条，只保存当前调度状态：
 
@@ -191,7 +212,7 @@
 
 - `user_id + client_request_id` 唯一，防止离线重试重复记一次复习。
 
-## 9. translation_cache
+## 10. translation_cache
 
 只缓存已经允许发送的单词和单条例句。
 
@@ -216,7 +237,7 @@
 
 具体的月度使用计数实现由数据库 migration 阶段确定，但必须由服务端原子更新，不能相信客户端计数。
 
-## 10. zotero_markers
+## 11. zotero_markers
 
 记录 AcademicVocab 创建的 Zotero 标记及云端状态。
 
@@ -251,7 +272,7 @@
 - 云端记录不能单独证明删除权限，还必须匹配插件本地账本；
 - `protected_modified` 不能自动删除。
 
-## 11. sync_jobs
+## 12. sync_jobs
 
 表示需要异步或重试的工作。
 

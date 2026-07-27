@@ -3,9 +3,8 @@ Set-StrictMode -Version Latest
 
 $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $buildDirectory = 'D:\AcademicVocab\zotero-dev\builds'
-$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.2.7.xpi'
-$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.2.7.zip'
-$supersededOutput = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.5.xpi'
+$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.xpi'
+$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.zip'
 
 if (-not (Test-Path -LiteralPath $source -PathType Container)) {
     throw "Plugin source directory is missing: $source"
@@ -26,10 +25,6 @@ if (Test-Path -LiteralPath $temporaryZip) {
 Compress-Archive -Path (Join-Path $source '*') -DestinationPath $temporaryZip -CompressionLevel Optimal
 Move-Item -LiteralPath $temporaryZip -Destination $output
 
-if (Test-Path -LiteralPath $supersededOutput) {
-    Remove-Item -LiteralPath $supersededOutput -Force
-}
-
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [System.IO.Compression.ZipFile]::OpenRead($output)
 try {
@@ -42,6 +37,9 @@ try {
     }
     if ($entryNames -notcontains 'sentence-extractor.js') {
         throw 'Built XPI does not contain sentence-extractor.js at its root.'
+    }
+    if ($entryNames -notcontains 'marker-ownership.js') {
+        throw 'Built XPI does not contain marker-ownership.js at its root.'
     }
 }
 finally {

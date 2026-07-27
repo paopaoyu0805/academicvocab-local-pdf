@@ -9,8 +9,9 @@ $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $manifestPath = Join-Path $source 'manifest.json'
 $bootstrapPath = Join-Path $source 'bootstrap.js'
 $extractorPath = Join-Path $source 'sentence-extractor.js'
+$ownershipPath = Join-Path $source 'marker-ownership.js'
 $proxy = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local'
-$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.2.7.xpi'
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.xpi'
 $installedXPI = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local.xpi'
 $expectedPluginID = 'academicvocab-selection-poc@academicvocab.local'
 
@@ -31,11 +32,12 @@ Assert-SelectionCheck (-not (Get-Process -Name zotero -ErrorAction SilentlyConti
 Assert-SelectionCheck (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'manifest exists'
 Assert-SelectionCheck (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) 'bootstrap exists'
 Assert-SelectionCheck (Test-Path -LiteralPath $extractorPath -PathType Leaf) 'sentence extractor exists'
+Assert-SelectionCheck (Test-Path -LiteralPath $ownershipPath -PathType Leaf) 'marker ownership module exists'
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $zoteroConfig = $manifest.applications.zotero
 Assert-SelectionCheck ($manifest.manifest_version -eq 2) 'manifest version is supported'
-Assert-SelectionCheck ($manifest.version -eq '0.2.7') 'POC version is 0.2.7'
+Assert-SelectionCheck ($manifest.version -eq '0.3.9') 'POC version is 0.3.9'
 Assert-SelectionCheck ($zoteroConfig.id -eq $expectedPluginID) 'plugin ID is exact'
 Assert-SelectionCheck ($zoteroConfig.strict_min_version -eq '8.999') 'minimum Zotero version follows the current Zotero 9 plugin convention'
 Assert-SelectionCheck ($zoteroConfig.strict_max_version -eq '10.0.*') 'maximum Zotero version follows the current Zotero 9 plugin convention'
@@ -43,12 +45,14 @@ Assert-SelectionCheck ($zoteroConfig.update_url -eq 'https://academicvocab.inval
 
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw -Encoding UTF8
 $extractor = Get-Content -LiteralPath $extractorPath -Raw -Encoding UTF8
-$pluginCode = "$bootstrap`n$extractor"
+$ownership = Get-Content -LiteralPath $ownershipPath -Raw -Encoding UTF8
+$pluginCode = "$bootstrap`n$extractor`n$ownership"
 Assert-SelectionCheck ($bootstrap.Contains('renderTextSelectionPopup')) 'official text-selection popup event is registered'
 Assert-SelectionCheck ($bootstrap.Contains('reader.itemID')) 'current reader attachment ID is used'
 Assert-SelectionCheck ($bootstrap.Contains('Zotero.PDFWorker.getFullText')) 'adjacent PDF pages are read through Zotero PDFWorker'
 Assert-SelectionCheck ($bootstrap.Contains('pageIndex - 1, pageIndex, pageIndex + 1')) 'only the selected and adjacent page indexes are requested'
 Assert-SelectionCheck ($bootstrap.Contains('loadSubScript')) 'tested sentence extractor is loaded at plugin startup'
+Assert-SelectionCheck ($bootstrap.Contains('marker-ownership.js')) 'tested marker ownership module is loaded at plugin startup'
 Assert-SelectionCheck (-not $bootstrap.Contains('reader._internalReader')) 'private reader view path is not used'
 Assert-SelectionCheck (-not $bootstrap.Contains('page.getTextContent')) 'private PDF.js page object is not used'
 Assert-SelectionCheck (-not $bootstrap.Contains('doc.getSelection')) 'popup document selection is not mistaken for PDF page text'
@@ -71,6 +75,22 @@ Assert-SelectionCheck ($bootstrap.Contains('addNodeCleanup')) 'viewport listener
 Assert-SelectionCheck ($bootstrap.Contains('doc.createElement("details")')) 'technical metadata is collapsed by default'
 Assert-SelectionCheck ($bootstrap.Contains('"position: sticky"')) 'drag title remains visible while panel content scrolls'
 Assert-SelectionCheck ($bootstrap.Contains('"white-space: nowrap"')) 'compact title remains on one line'
+Assert-SelectionCheck ($bootstrap.Contains('assertIsolatedDevelopmentProfile')) 'marker actions are restricted to the isolated development profile'
+Assert-SelectionCheck ($bootstrap.Contains('Services.prefs.setStringPref')) 'marker ledger is persisted in the plugin development profile'
+Assert-SelectionCheck ($bootstrap.Contains('Zotero.Annotations.saveFromJSON')) 'test markers use Zotero annotation APIs'
+Assert-SelectionCheck ($bootstrap.Contains('markerColor: "#8b5cf6"')) 'test marker uses the brighter lowercase purple color'
+Assert-SelectionCheck ($bootstrap.Contains('markerType: "underline"')) 'new test markers use a purple underline rather than a highlighter fill'
+Assert-SelectionCheck ($bootstrap.Contains('attachment.getAnnotations(false)')) 'existing annotations are checked only on the current attachment'
+Assert-SelectionCheck ($bootstrap.Contains('overlapsExistingAnnotation')) 'existing annotations may overlap without being modified'
+Assert-SelectionCheck (-not $bootstrap.Contains('return { code: "overlap_detected"')) 'overlap never blocks safe creation of a separate owned underline'
+Assert-SelectionCheck ($ownership.Contains('matchesExactOwnership')) 'deletion requires exact ownership verification'
+Assert-SelectionCheck ($ownership.Contains('legacyCanonicalJSONString')) 'pre-normalization ledger signatures have a constrained migration path'
+Assert-SelectionCheck ($ownership.Contains('matchesLegacyContextRecord')) 'legacy ledger lookup requires the same normalized owned selection'
+Assert-SelectionCheck ($ownership.Contains('canRecreateRemovedRecord')) 'only explicitly removed owned markers may be recreated on a new Create action'
+Assert-SelectionCheck ($bootstrap.Contains('removeOwnedTestMarker')) 'test-marker removal has a dedicated safe path'
+Assert-SelectionCheck (([regex]::Matches($bootstrap, 'eraseTx\s*\(')).Count -eq 1) 'only one exact-key erase operation exists'
+Assert-SelectionCheck ($bootstrap.Contains('verifyOrRestoreOwnedMarker')) 'only verified owned marker colors can be restored'
+Assert-SelectionCheck (([regex]::Matches($bootstrap, 'saveTx\s*\(')).Count -eq 1) 'only one exact-key color restore save operation exists'
 
 $forbiddenPatterns = @(
     '\bfetch\s*\(',
@@ -78,9 +98,7 @@ $forbiddenPatterns = @(
     '\bZotero\.HTTP\b',
     '\bZotero\.DB\b',
     '\bnew\s+Zotero\.Item\b',
-    '\bsaveTx\s*\(',
     '\bsave\s*\(',
-    '\beraseTx\s*\(',
     '\blocalStorage\b',
     '\bsessionStorage\b',
     'C:\\'
