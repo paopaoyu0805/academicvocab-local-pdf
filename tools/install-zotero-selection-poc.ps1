@@ -8,6 +8,10 @@ $prefs = 'D:\AcademicVocab\zotero-dev\profile\prefs.js'
 $extensions = 'D:\AcademicVocab\zotero-dev\profile\extensions'
 $pluginID = 'academicvocab-selection-poc@academicvocab.local'
 $proxy = Join-Path $extensions $pluginID
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.xpi'
+$installedXPI = Join-Path $extensions "$pluginID.xpi"
+$extensionsDatabase = Join-Path $profile 'extensions.json'
+$addonStartupCache = Join-Path $profile 'addonStartup.json.lz4'
 $prefsBackup = 'D:\AcademicVocab\backups\zotero-dev-prefs-before-selection-poc.js'
 
 if (Get-Process -Name zotero -ErrorAction SilentlyContinue) {
@@ -31,6 +35,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $source 'bootstrap.js') -PathType Le
     throw 'Plugin bootstrap file is missing.'
 }
 
+if (-not (Test-Path -LiteralPath $builtXPI -PathType Leaf)) {
+    throw "Built plugin XPI is missing: $builtXPI"
+}
+
 if (-not (Test-Path -LiteralPath $prefs -PathType Leaf)) {
     throw 'Development profile prefs.js is missing.'
 }
@@ -47,11 +55,10 @@ if (-not (Test-Path -LiteralPath $prefsBackup -PathType Leaf)) {
 }
 
 New-Item -ItemType Directory -Path $extensions -Force | Out-Null
-[System.IO.File]::WriteAllText(
-    $proxy,
-    $source,
-    [System.Text.UTF8Encoding]::new($false)
-)
+if (Test-Path -LiteralPath $proxy -PathType Leaf) {
+    Remove-Item -LiteralPath $proxy -Force
+}
+Copy-Item -LiteralPath $builtXPI -Destination $installedXPI -Force
 
 $filteredLines = [System.IO.File]::ReadAllLines($prefs) |
     Where-Object {
@@ -63,7 +70,14 @@ $filteredLines = [System.IO.File]::ReadAllLines($prefs) |
     [System.Text.UTF8Encoding]::new($false)
 )
 
-Write-Host "PASS: development-only extension proxy created: $proxy"
-Write-Host 'PASS: proxy points to D:\AcademicVocab\repo\zotero-selection-poc'
+foreach ($generatedCache in @($extensionsDatabase, $addonStartupCache)) {
+    if (Test-Path -LiteralPath $generatedCache -PathType Leaf) {
+        Remove-Item -LiteralPath $generatedCache -Force
+    }
+}
+
+Write-Host "PASS: development-only XPI installed: $installedXPI"
+Write-Host 'PASS: unreliable source proxy is absent'
+Write-Host 'PASS: generated development add-on caches were cleared for safe discovery'
 Write-Host "PASS: small development prefs backup exists: $prefsBackup"
 Write-Host 'PASS: daily Zotero profile and data were not accessed.'

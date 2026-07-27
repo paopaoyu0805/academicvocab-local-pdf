@@ -37,6 +37,8 @@
 
 `D:\AcademicVocab\start-zotero-dev.cmd`
 
+启动脚本会为开发插件清理运行缓存，但不会清理文献、PDF、设置或日常 Zotero 数据。
+
 开发 Zotero 打开后：
 
 1. 选择“工具 → 插件”；

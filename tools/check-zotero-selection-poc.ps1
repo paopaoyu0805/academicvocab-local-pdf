@@ -5,6 +5,8 @@ $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $manifestPath = Join-Path $source 'manifest.json'
 $bootstrapPath = Join-Path $source 'bootstrap.js'
 $proxy = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local'
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.1.0.xpi'
+$installedXPI = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local.xpi'
 $expectedPluginID = 'academicvocab-selection-poc@academicvocab.local'
 
 function Assert-SelectionCheck {
@@ -56,9 +58,13 @@ foreach ($pattern in $forbiddenPatterns) {
     Assert-SelectionCheck (-not ($bootstrap -match $pattern)) "bootstrap excludes forbidden pattern: $pattern"
 }
 
-Assert-SelectionCheck (Test-Path -LiteralPath $proxy -PathType Leaf) 'development extension proxy exists'
-$proxyTarget = [System.IO.File]::ReadAllText($proxy).Trim()
-Assert-SelectionCheck ($proxyTarget -eq $source) 'development extension proxy points to the repository source'
-Assert-SelectionCheck ($proxyTarget.StartsWith('D:\AcademicVocab\', [System.StringComparison]::OrdinalIgnoreCase)) 'proxy target is on the D-drive project root'
+Assert-SelectionCheck (-not (Test-Path -LiteralPath $proxy)) 'unreliable development source proxy is absent'
+Assert-SelectionCheck (Test-Path -LiteralPath $builtXPI -PathType Leaf) 'built XPI exists on D drive'
+Assert-SelectionCheck (Test-Path -LiteralPath $installedXPI -PathType Leaf) 'development-only installed XPI exists'
+Assert-SelectionCheck (
+    (Get-FileHash -LiteralPath $builtXPI -Algorithm SHA256).Hash -eq
+    (Get-FileHash -LiteralPath $installedXPI -Algorithm SHA256).Hash
+) 'installed XPI exactly matches the verified build'
+Assert-SelectionCheck ($installedXPI.StartsWith('D:\AcademicVocab\', [System.StringComparison]::OrdinalIgnoreCase)) 'installed XPI is under the D-drive project root'
 
 Write-Host 'ALL ZOTERO SELECTION POC CHECKS PASSED.'
