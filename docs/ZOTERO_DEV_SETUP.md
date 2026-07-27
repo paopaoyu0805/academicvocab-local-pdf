@@ -4,8 +4,9 @@
 
 ## 隔离结构
 
-- 日常 Zotero：`D:\zotero`
-- 开发 Zotero 程序：`D:\AcademicVocab\tools\zotero-dev-runtime`
+- 日常 Zotero 程序：`D:\ZoteroApp\9.0.6`
+- 日常 Zotero 数据：`D:\zotero`
+- 开发 Zotero 程序：`D:\AcademicVocab\tools\zotero-dev-runtime-9.0.6`
 - 开发 profile：`D:\AcademicVocab\zotero-dev\profile`
 - 开发数据：`D:\AcademicVocab\zotero-dev\data`
 - 测试 PDF：`D:\AcademicVocab\zotero-dev\test-pdfs`
@@ -34,7 +35,7 @@
 脚本会先检查：
 
 - 使用的是独立开发程序，不是日常 Zotero；
-- 开发程序版本为 7.0.32；
+- 开发程序版本为 9.0.6；
 - 程序数字签名和 SHA-256 哈希正确；
 - `application.ini` 与 Mozilla 平台版本一致；
 - profile、数据和临时目录都在 D 盘；
@@ -48,7 +49,7 @@
 
 开发 Zotero 第一次打开时应像全新安装，文献库为空，也没有日常账户信息。
 
-选择“帮助 → 关于 Zotero”，版本应为 7.0.32。
+选择“帮助 → 关于 Zotero”，版本应为 9.0.6。
 
 再查看：
 
@@ -114,7 +115,9 @@
 
 ### 12. 重新打开日常 Zotero
 
-确认开发 Zotero 已完全退出后，再用桌面或开始菜单中的原快捷方式打开日常 Zotero。
+确认开发 Zotero 已完全退出后，再双击个人桌面上的“Zotero（日常使用）”快捷方式打开日常 Zotero。
+
+Windows 公共桌面上的旧“Zotero”图标仍指向 `D:\zotero\zotero.exe`（7.0.32），因为修改公共快捷方式需要管理员权限。不要再使用这个旧图标。
 
 不要同时运行日常 Zotero 和开发 Zotero。
 
@@ -124,7 +127,7 @@
 
 如需删除全部开发环境，可把以下内容移入回收站：
 
-- `D:\AcademicVocab\tools\zotero-dev-runtime`
+- `D:\AcademicVocab\tools\zotero-dev-runtime-9.0.6`
 - `D:\AcademicVocab\zotero-dev`
 - `D:\AcademicVocab\start-zotero-dev.cmd`
 
