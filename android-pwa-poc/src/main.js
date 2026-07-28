@@ -1,4 +1,5 @@
 import { extractCandidate, normalizeText } from "./selection-candidate.js";
+import { normalizeWordForm } from "./word-normalizer.js";
 import "./styles.css";
 
 const input = document.querySelector("#pdf-file");
@@ -19,7 +20,6 @@ let currentPage = 1;
 let currentPageText = "";
 let titleTapStart = null;
 let suppressNativeSelectionUntil = 0;
-let wordNormalizerPromise = null;
 let pdfEnginePromise = null;
 let pdfjsLib = null;
 const pageTextCache = new Map();
@@ -38,11 +38,6 @@ function scheduleIdle(callback) {
 
 function nextPaint() {
   return new Promise(resolve => requestAnimationFrame(() => resolve()));
-}
-
-function loadWordNormalizer() {
-  wordNormalizerPromise ||= import("./word-normalizer.js");
-  return wordNormalizerPromise;
 }
 
 function loadPdfEngine() {
@@ -117,7 +112,7 @@ async function selectedLineMayContinue(selectedLine) {
 async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
   const requestId = ++selectionRequestId;
   document.querySelector("#selected-text").textContent = selected;
-  document.querySelector("#lemma-text").textContent = "加载中…";
+  document.querySelector("#lemma-text").textContent = "处理中…";
   document.querySelector("#candidate-text").textContent = "正在提取例句…";
   document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
   document.querySelector("#candidate-assessment").textContent = "候选正在本地处理。";
@@ -137,23 +132,13 @@ async function showCandidate(selected, selectedLine = "", selectedLineIsHeading 
     ? "Confirmation required: ambiguous or incomplete candidates are not saved."
     : "Complete local candidate; this prototype still does not save it.";
 
-  try {
-    const { normalizeWordForm } = await loadWordNormalizer();
-    if (requestId !== selectionRequestId) return;
-    const wordForm = normalizeWordForm(selected, candidate.text);
-    document.querySelector("#lemma-text").textContent = wordForm.ambiguous
-      ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
-      : wordForm.lemma;
-    if (wordForm.ambiguous) {
-      document.querySelector("#candidate-assessment").textContent =
-        "Confirmation required: the base form is ambiguous and nothing is saved.";
-    }
-  }
-  catch {
-    wordNormalizerPromise = null;
-    if (requestId !== selectionRequestId) return;
-    document.querySelector("#lemma-text").textContent =
-      `${selected.toLocaleLowerCase("en-US")}（词形词典加载失败）`;
+  const wordForm = normalizeWordForm(selected, candidate.text);
+  document.querySelector("#lemma-text").textContent = wordForm.ambiguous
+    ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
+    : wordForm.lemma;
+  if (wordForm.ambiguous) {
+    document.querySelector("#candidate-assessment").textContent =
+      "Confirmation required: the base form is ambiguous and nothing is saved.";
   }
 }
 
@@ -296,9 +281,6 @@ function indexTextLayerLines() {
 
 function prefetchSelectionResources(pageNumber) {
   scheduleIdle(() => {
-    void loadWordNormalizer().catch(() => {
-      wordNormalizerPromise = null;
-    });
     if (pageNumber > 1) void getPageText(pageNumber - 1).catch(() => {});
     if (pageNumber < pdfDocument.numPages) void getPageText(pageNumber + 1).catch(() => {});
   });
@@ -419,10 +401,12 @@ textLayer.addEventListener("pointerup", event => {
   }
 });
 
-scheduleIdle(() => {
-  void loadPdfEngine().catch(() => {
-    pdfEnginePromise = null;
-  });
+requestAnimationFrame(() => {
+  window.setTimeout(() => {
+    void loadPdfEngine().catch(() => {
+      pdfEnginePromise = null;
+    });
+  }, 0);
 });
 
 if ("serviceWorker" in navigator) {

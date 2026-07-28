@@ -10,12 +10,19 @@ test("normalizes common academic inflections to one base form", () => {
   assert.equal(normalizeWordForm("running").lemma, "run");
   assert.equal(normalizeWordForm("was").lemma, "be");
   assert.equal(normalizeWordForm("children").lemma, "child");
+  assert.equal(normalizeWordForm("analyses").lemma, "analysis");
+  assert.equal(normalizeWordForm("criteria").lemma, "criterion");
+  assert.equal(normalizeWordForm("created").lemma, "create");
+  assert.equal(normalizeWordForm("included").lemma, "include");
 });
 
 test("keeps an already-base word unchanged", () => {
   const result = normalizeWordForm("perforin");
   assert.equal(result.lemma, "perforin");
   assert.equal(result.ambiguous, false);
+  assert.equal(normalizeWordForm("analysis").lemma, "analysis");
+  assert.equal(normalizeWordForm("focus").lemma, "focus");
+  assert.equal(normalizeWordForm("process").lemma, "process");
 });
 
 test("uses sentence context but preserves an ambiguous alternative", () => {
@@ -29,4 +36,3 @@ test("uses sentence context but preserves an ambiguous alternative", () => {
   assert.deepEqual(verb.alternatives, ["leaf"]);
   assert.equal(verb.ambiguous, true);
 });
-

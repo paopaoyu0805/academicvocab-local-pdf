@@ -1,8 +1,7 @@
 {
   "dependencies": {
     "pdfjs-dist": "6.1.200",
-    "vite": "8.1.5",
-    "wink-lemmatizer": "3.0.4"
+    "vite": "8.1.5"
   },
   "scripts": {
     "test": "node --test tests\\sentence-extractor.test.cjs tests\\marker-ownership.test.cjs tests\\local-capture-store.test.cjs tests\\android-selection-candidate.test.cjs tests\\word-normalizer.test.mjs",

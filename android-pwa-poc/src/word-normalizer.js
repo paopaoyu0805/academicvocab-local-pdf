@@ -1,10 +1,27 @@
-import lemmatizer from "wink-lemmatizer";
-
 const NOUN_HINTS = new Set([
   "a", "an", "the", "these", "those", "many", "several", "both",
   "each", "every", "its", "our", "their", "his", "her"
 ]);
 const VERB_HINTS = new Set(["he", "she", "it", "this", "that", "who", "which"]);
+const IRREGULAR = new Map(Object.entries({
+  am: "be", are: "be", is: "be", was: "be", were: "be", been: "be",
+  has: "have", had: "have", does: "do", did: "do", done: "do",
+  went: "go", gone: "go", made: "make", took: "take", taken: "take",
+  making: "make", taking: "take", using: "use", used: "use",
+  having: "have", giving: "give", writing: "write", becoming: "become",
+  found: "find", gave: "give", given: "give", saw: "see", seen: "see",
+  showed: "show", shown: "show", became: "become", begun: "begin",
+  began: "begin", brought: "bring", built: "build", thought: "think",
+  children: "child", men: "man", women: "woman", mice: "mouse",
+  teeth: "tooth", feet: "foot", geese: "goose",
+  analyses: "analysis", hypotheses: "hypothesis", syntheses: "synthesis",
+  diagnoses: "diagnosis", criteria: "criterion", phenomena: "phenomenon",
+  axes: "axis", indices: "index", matrices: "matrix", vertices: "vertex",
+  nuclei: "nucleus", bacteria: "bacterium"
+}));
+const BASE_S_ENDINGS = /(ss|us|is)$/;
+const DOUBLE_PAST_CONSONANTS = new Set(["b", "d", "g", "m", "n", "p", "r", "t"]);
+const RESTORE_E_ENDINGS = /(at|iz|ur|iv|duc|clud|quir|serv|chang|creas|caus|provid)$/;
 
 function cleanWord(value) {
   return String(value || "")
@@ -22,6 +39,40 @@ function previousWord(surface, sentence) {
   return before ? before[1] : "";
 }
 
+function nounLemma(word) {
+  if (IRREGULAR.has(word)) return IRREGULAR.get(word);
+  if (word === "leaves") return "leaf";
+  if (word.length < 4 || BASE_S_ENDINGS.test(word)) return word;
+  if (word.endsWith("ies") && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (/(sses|xes|zes|ches|shes|oes)$/.test(word)) return word.slice(0, -2);
+  if (word.endsWith("s")) return word.slice(0, -1);
+  return word;
+}
+
+function verbLemma(word) {
+  if (IRREGULAR.has(word)) return IRREGULAR.get(word);
+  if (word === "leaves") return "leave";
+  if (word.endsWith("ying") && word.length > 5) return word.slice(0, -3);
+  if (word.endsWith("ing") && word.length > 5) {
+    const stem = word.slice(0, -3);
+    const last = stem.at(-1);
+    if (last === stem.at(-2) && DOUBLE_PAST_CONSONANTS.has(last)) return stem.slice(0, -1);
+    if (RESTORE_E_ENDINGS.test(stem)) {
+      return `${stem}e`;
+    }
+    return stem;
+  }
+  if (word.endsWith("ied") && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (word.endsWith("ed") && word.length > 4) {
+    const stem = word.slice(0, -2);
+    const last = stem.at(-1);
+    if (last === stem.at(-2) && DOUBLE_PAST_CONSONANTS.has(last)) return stem.slice(0, -1);
+    if (RESTORE_E_ENDINGS.test(stem)) return `${stem}e`;
+    return stem;
+  }
+  return nounLemma(word);
+}
+
 export function normalizeWordForm(surface, sentence = "") {
   const original = String(surface || "").trim();
   const normalizedSurface = cleanWord(original);
@@ -29,8 +80,8 @@ export function normalizeWordForm(surface, sentence = "") {
     return { original, lemma: "", alternatives: [], ambiguous: false, reason: "empty" };
   }
 
-  const verb = lemmatizer.verb(normalizedSurface);
-  const noun = lemmatizer.noun(normalizedSurface);
+  const verb = verbLemma(normalizedSurface);
+  const noun = nounLemma(normalizedSurface);
   const changed = [...new Set([verb, noun].filter(item => item && item !== normalizedSurface))];
   if (changed.length === 0) {
     return {
@@ -63,4 +114,3 @@ export function normalizeWordForm(surface, sentence = "") {
     reason: preferVerb ? "context_verb" : (preferNoun ? "context_noun" : "ambiguous_default_noun")
   };
 }
-
