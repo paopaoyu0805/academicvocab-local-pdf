@@ -130,8 +130,9 @@
     requireStore(store);
     input = input || {};
     let userID = requiredText(input.userID, "user ID");
-    let originalWord = requiredText(input.word, "word");
-    let normalizedWord = normalizeWord(originalWord);
+    let surfaceForm = requiredText(input.surfaceForm || input.word, "surface form");
+    let lemma = requiredText(input.lemma || input.word, "lemma");
+    let normalizedWord = normalizeWord(lemma);
     let source = validateSource(input.source);
     let selectedExamples = Array.isArray(input.examples) ? input.examples : null;
     if (!selectedExamples || selectedExamples.length === 0) {
@@ -146,7 +147,8 @@
       word = {
         id: allocateID(store, "word"),
         userID,
-        originalWord,
+        originalWord: lemma,
+        lemma,
         normalizedWord,
         lifecycleStatus: "active"
       };
@@ -158,7 +160,16 @@
     let addedExamples = [];
     let duplicateExamples = [];
     for (let rawExample of selectedExamples) {
-      let sentence = requiredText(rawExample, "example sentence");
+      let sentence = requiredText(
+        rawExample && typeof rawExample === "object" ? rawExample.sentence : rawExample,
+        "example sentence"
+      );
+      let exampleSurfaceForm = requiredText(
+        rawExample && typeof rawExample === "object"
+          ? (rawExample.surfaceForm || surfaceForm)
+          : surfaceForm,
+        "example surface form"
+      );
       let normalizedSentence = normalizeSentence(sentence);
       let existing = store.state.examples.find(item =>
         item.userID === userID &&
@@ -178,6 +189,7 @@
         documentID: document.id,
         sentence,
         normalizedSentence,
+        surfaceForm: exampleSurfaceForm,
         pageIndex: source.pageIndex
       };
       store.state.examples.push(example);

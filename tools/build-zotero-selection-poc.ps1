@@ -3,8 +3,8 @@ Set-StrictMode -Version Latest
 
 $source = 'D:\AcademicVocab\repo\zotero-selection-poc'
 $buildDirectory = 'D:\AcademicVocab\zotero-dev\builds'
-$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.xpi'
-$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.zip'
+$output = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.4.0.xpi'
+$temporaryZip = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.4.0.zip'
 
 if (-not (Test-Path -LiteralPath $source -PathType Container)) {
     throw "Plugin source directory is missing: $source"
@@ -40,6 +40,9 @@ try {
     }
     if ($entryNames -notcontains 'marker-ownership.js') {
         throw 'Built XPI does not contain marker-ownership.js at its root.'
+    }
+    if ($entryNames -notcontains 'word-normalizer.js') {
+        throw 'Built XPI does not contain word-normalizer.js at its root.'
     }
 }
 finally {

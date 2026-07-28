@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { normalizeWordForm } from "../android-pwa-poc/src/word-normalizer.js";
+
+const require = createRequire(import.meta.url);
+const zoteroNormalizer = require("../zotero-selection-poc/word-normalizer.js");
 
 test("normalizes common academic inflections to one base form", () => {
   assert.equal(normalizeWordForm("contains").lemma, "contain");
@@ -35,4 +39,20 @@ test("uses sentence context but preserves an ambiguous alternative", () => {
   assert.equal(verb.lemma, "leave");
   assert.deepEqual(verb.alternatives, ["leaf"]);
   assert.equal(verb.ambiguous, true);
+});
+
+test("Zotero and Android use identical normalization results", () => {
+  const cases = [
+    ["contains", "This PDF contains public test text."],
+    ["contained", "The sample contained perforin."],
+    ["cells", "The cells were collected."],
+    ["leaves", "It leaves the membrane."],
+    ["analyses", "The analyses were reproducible."]
+  ];
+  for (const [surface, sentence] of cases) {
+    assert.deepEqual(
+      zoteroNormalizer.normalizeWordForm(surface, sentence),
+      normalizeWordForm(surface, sentence)
+    );
+  }
 });

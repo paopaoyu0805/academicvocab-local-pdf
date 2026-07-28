@@ -38,6 +38,33 @@ test("one normalized word is created once and one confirmation creates one batch
   assert.equal(second.batch.captureOrdinal, 2);
 });
 
+test("different surface forms merge under one explicitly supplied lemma", () => {
+  const store = captureStore.createStore();
+  const first = captureStore.saveConfirmedCapture(store, {
+    userID: "user-1",
+    word: "contains",
+    surfaceForm: "contains",
+    lemma: "contain",
+    source: source(),
+    examples: [{ sentence: "This PDF contains public test text.", surfaceForm: "contains" }]
+  });
+  const second = captureStore.saveConfirmedCapture(store, {
+    userID: "user-1",
+    word: "contained",
+    surfaceForm: "contained",
+    lemma: "contain",
+    source: source({ pageIndex: 3 }),
+    examples: [{ sentence: "The sample contained perforin.", surfaceForm: "contained" }]
+  });
+  const state = captureStore.snapshot(store);
+
+  assert.equal(first.wordCreated, true);
+  assert.equal(second.wordCreated, false);
+  assert.equal(state.words.length, 1);
+  assert.equal(state.words[0].lemma, "contain");
+  assert.deepEqual(state.examples.map(item => item.surfaceForm), ["contains", "contained"]);
+});
+
 test("one confirmed batch preserves multiple selected examples without inflating its ordinal", () => {
   const store = captureStore.createStore();
   const result = capture(store, {

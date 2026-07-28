@@ -10,8 +10,9 @@ $manifestPath = Join-Path $source 'manifest.json'
 $bootstrapPath = Join-Path $source 'bootstrap.js'
 $extractorPath = Join-Path $source 'sentence-extractor.js'
 $ownershipPath = Join-Path $source 'marker-ownership.js'
+$normalizerPath = Join-Path $source 'word-normalizer.js'
 $proxy = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local'
-$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.3.9.xpi'
+$builtXPI = 'D:\AcademicVocab\zotero-dev\builds\academicvocab-selection-poc-0.4.0.xpi'
 $installedXPI = 'D:\AcademicVocab\zotero-dev\profile\extensions\academicvocab-selection-poc@academicvocab.local.xpi'
 $expectedPluginID = 'academicvocab-selection-poc@academicvocab.local'
 
@@ -33,11 +34,12 @@ Assert-SelectionCheck (Test-Path -LiteralPath $manifestPath -PathType Leaf) 'man
 Assert-SelectionCheck (Test-Path -LiteralPath $bootstrapPath -PathType Leaf) 'bootstrap exists'
 Assert-SelectionCheck (Test-Path -LiteralPath $extractorPath -PathType Leaf) 'sentence extractor exists'
 Assert-SelectionCheck (Test-Path -LiteralPath $ownershipPath -PathType Leaf) 'marker ownership module exists'
+Assert-SelectionCheck (Test-Path -LiteralPath $normalizerPath -PathType Leaf) 'word normalizer module exists'
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $zoteroConfig = $manifest.applications.zotero
 Assert-SelectionCheck ($manifest.manifest_version -eq 2) 'manifest version is supported'
-Assert-SelectionCheck ($manifest.version -eq '0.3.9') 'POC version is 0.3.9'
+Assert-SelectionCheck ($manifest.version -eq '0.4.0') 'POC version is 0.4.0'
 Assert-SelectionCheck ($zoteroConfig.id -eq $expectedPluginID) 'plugin ID is exact'
 Assert-SelectionCheck ($zoteroConfig.strict_min_version -eq '8.999') 'minimum Zotero version follows the current Zotero 9 plugin convention'
 Assert-SelectionCheck ($zoteroConfig.strict_max_version -eq '10.0.*') 'maximum Zotero version follows the current Zotero 9 plugin convention'
@@ -46,13 +48,17 @@ Assert-SelectionCheck ($zoteroConfig.update_url -eq 'https://academicvocab.inval
 $bootstrap = Get-Content -LiteralPath $bootstrapPath -Raw -Encoding UTF8
 $extractor = Get-Content -LiteralPath $extractorPath -Raw -Encoding UTF8
 $ownership = Get-Content -LiteralPath $ownershipPath -Raw -Encoding UTF8
-$pluginCode = "$bootstrap`n$extractor`n$ownership"
+$normalizer = Get-Content -LiteralPath $normalizerPath -Raw -Encoding UTF8
+$pluginCode = "$bootstrap`n$extractor`n$ownership`n$normalizer"
 Assert-SelectionCheck ($bootstrap.Contains('renderTextSelectionPopup')) 'official text-selection popup event is registered'
 Assert-SelectionCheck ($bootstrap.Contains('reader.itemID')) 'current reader attachment ID is used'
 Assert-SelectionCheck ($bootstrap.Contains('Zotero.PDFWorker.getFullText')) 'adjacent PDF pages are read through Zotero PDFWorker'
 Assert-SelectionCheck ($bootstrap.Contains('pageIndex - 1, pageIndex, pageIndex + 1')) 'only the selected and adjacent page indexes are requested'
 Assert-SelectionCheck ($bootstrap.Contains('loadSubScript')) 'tested sentence extractor is loaded at plugin startup'
 Assert-SelectionCheck ($bootstrap.Contains('marker-ownership.js')) 'tested marker ownership module is loaded at plugin startup'
+Assert-SelectionCheck ($bootstrap.Contains('word-normalizer.js')) 'tested word normalizer module is loaded at plugin startup'
+Assert-SelectionCheck ($bootstrap.Contains('academicvocab-lemma-preview')) 'panel shows the lemma intended for the main word record'
+Assert-SelectionCheck ($bootstrap.Contains('academicvocab-surface-form-preview')) 'panel preserves the selected surface form'
 Assert-SelectionCheck (-not $bootstrap.Contains('reader._internalReader')) 'private reader view path is not used'
 Assert-SelectionCheck (-not $bootstrap.Contains('page.getTextContent')) 'private PDF.js page object is not used'
 Assert-SelectionCheck (-not $bootstrap.Contains('doc.getSelection')) 'popup document selection is not mistaken for PDF page text'

@@ -106,6 +106,10 @@ var AcademicVocabSelectionPOC = {
       confidence: "low",
       reasons: ["no_candidate"]
     };
+    let wordForm = AcademicVocabWordNormalizer.normalizeWordForm(
+      selectedText,
+      primaryCandidate.text
+    );
     let metadata = await this.getAttachmentMetadata(reader, annotation);
     let markerContext = null;
     let markerContextError = null;
@@ -198,12 +202,32 @@ var AcademicVocabSelectionPOC = {
       `置信度：${confidenceLabels[primaryCandidate.confidence] || "低"}`,
       primaryCandidate.kind === "sentence" ? "类型：完整句候选" : "类型：来源片段",
       extraction.requiresConfirmation ? "需要确认" : "可直接确认",
-      `页面内匹配：${extraction.diagnostic.occurrenceCount}`
+      `页面内匹配：${extraction.diagnostic.occurrenceCount}`,
+      wordForm.ambiguous ? "原形存在歧义，需要确认" : "原形可作为拟录入主词"
     ].join("；");
+
+    let lemmaField = this.createReadOnlyField(
+      doc,
+      "拟录入主词（原形）",
+      this.formatWordForm(wordForm)
+    );
+    let lemmaControl = lemmaField.querySelector("input");
+    lemmaControl.id = "academicvocab-lemma-preview";
+    let surfaceField = this.createReadOnlyField(
+      doc,
+      "选中的原文词形",
+      selectedText
+    );
+    surfaceField.querySelector("input").id = "academicvocab-surface-form-preview";
+    let updateWordForm = sentence => {
+      wordForm = AcademicVocabWordNormalizer.normalizeWordForm(selectedText, sentence);
+      lemmaControl.value = this.formatWordForm(wordForm);
+    };
 
     panel.append(title, notice);
     panel.append(
-      this.createField(doc, "选中的词或短语", selectedText, false),
+      surfaceField,
+      lemmaField,
       sentenceField,
       this.createReadOnlyField(doc, "本地判断", assessment)
     );
@@ -211,7 +235,8 @@ var AcademicVocabSelectionPOC = {
     let chooser = this.createCandidateChooser(
       doc,
       extraction.candidates,
-      sentenceControl
+      sentenceControl,
+      updateWordForm
     );
     if (chooser) {
       panel.append(chooser);
@@ -1166,7 +1191,14 @@ var AcademicVocabSelectionPOC = {
     return wrapper;
   },
 
-  createCandidateChooser(doc, candidates, sentenceControl) {
+  formatWordForm(wordForm) {
+    if (!wordForm || !wordForm.lemma) return "（无法判断）";
+    return wordForm.ambiguous
+      ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
+      : wordForm.lemma;
+  },
+
+  createCandidateChooser(doc, candidates, sentenceControl, onCandidateChange) {
     if (!Array.isArray(candidates) || !candidates.length) {
       return null;
     }
@@ -1209,6 +1241,9 @@ var AcademicVocabSelectionPOC = {
       ].join(";");
       button.addEventListener("click", () => {
         sentenceControl.value = candidate.text;
+        if (onCandidateChange) {
+          onCandidateChange(candidate.text);
+        }
         sentenceControl.focus();
       });
       wrapper.append(button);
@@ -1351,11 +1386,15 @@ var AcademicVocabSelectionPOC = {
 async function startup({ rootURI }) {
   Services.scriptloader.loadSubScript(rootURI + "sentence-extractor.js");
   Services.scriptloader.loadSubScript(rootURI + "marker-ownership.js");
+  Services.scriptloader.loadSubScript(rootURI + "word-normalizer.js");
   if (typeof AcademicVocabSentenceExtractor === "undefined") {
     throw new Error("AcademicVocab sentence extractor failed to load");
   }
   if (typeof AcademicVocabMarkerOwnership === "undefined") {
     throw new Error("AcademicVocab marker ownership module failed to load");
+  }
+  if (typeof AcademicVocabWordNormalizer === "undefined") {
+    throw new Error("AcademicVocab word normalizer failed to load");
   }
   AcademicVocabSelectionPOC.start();
 }

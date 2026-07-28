@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "AcademicVocab Selection POC",
-  "version": "0.3.9",
-  "description": "Offline Zotero selection, sentence, and isolated marker-ownership proof of concept. It never translates or contacts a network service.",
+  "version": "0.4.0",
+  "description": "Offline Zotero selection, sentence, lemma preview, and isolated marker-ownership proof of concept. It never translates or contacts a network service.",
   "author": "AcademicVocab",
   "applications": {
     "zotero": {
