@@ -97,3 +97,13 @@ test("keeps a punctuation-free line separate when the next block starts a new se
   assert.equal(result.reason, "punctuation_free_fragment");
   assert.equal(result.requiresConfirmation, true);
 });
+
+test("never crosses an explicit PDF page boundary after a punctuation-free fragment", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "cell",
+    pageText: "Perforin opens pores; granzyme enters the cell\fTwo-column reading order."
+  });
+  assert.equal(result.text, "Perforin opens pores; granzyme enters the cell");
+  assert.equal(result.requiresConfirmation, true);
+});

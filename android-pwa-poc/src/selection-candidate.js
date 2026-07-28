@@ -25,8 +25,8 @@ function removeLeadingUnpunctuatedHeading(text, needle) {
 function sentenceBounds(text, index) {
   const before = text.slice(0, index);
   const after = text.slice(index);
-  const startMatch = before.match(/(?:^|[.!?])\s*([^.!?]*)$/);
-  const endMatch = after.match(/^[\s\S]*?[.!?](?=\s|$)/);
+  const startMatch = before.match(/(?:^|[.!?\f])\s*([^.!?\f]*)$/);
+  const endMatch = after.match(/^[\s\S]*?(?:[.!?](?=\s|$)|\f)/);
   return {
     start: startMatch ? index - startMatch[1].length : index,
     end: endMatch ? index + endMatch[0].length : index + after.length

@@ -20,6 +20,7 @@ let pdfDocument = null;
 let currentPage = 1;
 let currentPageText = "";
 let titleTapStart = null;
+let suppressNativeSelectionUntil = 0;
 const pageTextCache = new Map();
 
 function contextPageText(text) {
@@ -42,7 +43,14 @@ async function candidateContextText() {
   if (currentPage > 1) pages.push(await getPageText(currentPage - 1));
   pages.push(currentPageText);
   if (currentPage < pdfDocument.numPages) pages.push(await getPageText(currentPage + 1));
-  return pages.map(contextPageText).filter(Boolean).join("\n");
+  const cleaned = pages.map(contextPageText).filter(Boolean);
+  return cleaned.reduce((combined, nextPage) => {
+    if (!combined) return nextPage;
+    const previousEndsWithoutPunctuation = !/[.!?]$/.test(combined.trim());
+    const nextStartsLowercase = /^[a-z]/.test(nextPage);
+    const boundary = previousEndsWithoutPunctuation && !nextStartsLowercase ? "\n\f\n" : "\n";
+    return `${combined}${boundary}${nextPage}`;
+  }, "");
 }
 
 async function selectedLineMayContinue(selectedLine) {
@@ -257,7 +265,7 @@ nextButton.addEventListener("click", () => {
 document.querySelector("#dismiss-selection").addEventListener("click", clearSelection);
 
 document.addEventListener("selectionchange", () => {
-  if (titleTapStart) return;
+  if (titleTapStart || performance.now() < suppressNativeSelectionUntil) return;
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
@@ -271,6 +279,7 @@ textLayer.addEventListener("pointerdown", event => {
   const span = event.target.closest?.("span");
   if (!span) return;
   titleTapStart = { x: event.clientX, y: event.clientY };
+  suppressNativeSelectionUntil = performance.now() + 800;
   event.preventDefault();
 });
 
@@ -283,6 +292,7 @@ textLayer.addEventListener("pointerup", event => {
   const selected = expandHyphenatedTapWord(wordAtHorizontalPoint(span, event.clientX));
   const line = textLayerLineForSpan(span);
   if (selected && line) {
+    suppressNativeSelectionUntil = performance.now() + 800;
     window.getSelection()?.removeAllRanges();
     void showCandidate(selected, line, isHeadingSpan(span));
   }
