@@ -19,6 +19,48 @@ const selectionPanel = document.querySelector("#selection-panel");
 let pdfDocument = null;
 let currentPage = 1;
 let currentPageText = "";
+let titleTapStart = null;
+
+function showCandidate(selected, selectedLine = "") {
+  const candidate = extractCandidate({ selectedText: selected, selectedLine, pageText: currentPageText });
+  document.querySelector("#selected-text").textContent = selected;
+  document.querySelector("#candidate-text").textContent = candidate.text;
+  document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
+  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation
+    ? "Confirmation required: ambiguous or incomplete candidates are not saved."
+    : "Complete local candidate; this prototype still does not save it.";
+  selectionPanel.hidden = false;
+}
+
+function firstTextLayerLineTop() {
+  const first = [...textLayer.querySelectorAll("span")].find(span => normalizeText(span.textContent));
+  return first ? first.getBoundingClientRect().top : null;
+}
+
+function wordAtHorizontalPoint(span, clientX) {
+  const textNode = span.firstChild;
+  const text = String(textNode?.textContent || "");
+  if (!textNode || !text.trim()) return "";
+  let offset = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < text.length; index += 1) {
+    const range = document.createRange();
+    range.setStart(textNode, index);
+    range.setEnd(textNode, index + 1);
+    const rect = range.getBoundingClientRect();
+    const distance = Math.abs(clientX - (rect.left + rect.right) / 2);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      offset = index;
+    }
+  }
+  const before = text.slice(0, offset + 1);
+  const start = Math.max(before.lastIndexOf(" ") + 1, 0);
+  const after = text.slice(offset);
+  const endSpace = after.indexOf(" ");
+  const end = endSpace < 0 ? text.length : offset + endSpace;
+  return normalizeText(text.slice(start, end).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, ""));
+}
 
 function selectedTextLayerLine(selection) {
   if (!selection?.rangeCount) return "";
@@ -151,18 +193,22 @@ document.addEventListener("selectionchange", () => {
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
-  const candidate = extractCandidate({
-    selectedText: selected,
-    selectedLine: selectedTextLayerLine(selection),
-    pageText: currentPageText
-  });
-  document.querySelector("#selected-text").textContent = selected;
-  document.querySelector("#candidate-text").textContent = candidate.text;
-  document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
-  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation
-    ? "Confirmation required: ambiguous or incomplete candidates are not saved."
-    : "Complete local candidate; this prototype still does not save it.";
-  selectionPanel.hidden = false;
+  showCandidate(selected, selectedTextLayerLine(selection));
+});
+
+textLayer.addEventListener("pointerdown", event => {
+  titleTapStart = { x: event.clientX, y: event.clientY };
+});
+
+textLayer.addEventListener("pointerup", event => {
+  if (!titleTapStart || Math.hypot(event.clientX - titleTapStart.x, event.clientY - titleTapStart.y) > 12) return;
+  const span = event.target.closest?.("span");
+  const firstLineTop = firstTextLayerLineTop();
+  titleTapStart = null;
+  if (!span || firstLineTop === null || Math.abs(span.getBoundingClientRect().top - firstLineTop) >= 2) return;
+  const selected = wordAtHorizontalPoint(span, event.clientX);
+  const heading = normalizeText(currentPageText.split("\n", 1)[0]);
+  if (selected && heading) showCandidate(selected, heading);
 });
 
 if ("serviceWorker" in navigator) {
