@@ -36,13 +36,12 @@ function selectedTextLayerLine(selection) {
 function disableLeadingHeadingSelection() {
   const heading = currentPageText.split("\n", 1)[0]?.trim();
   if (!heading || /[.!?]$/.test(heading)) return;
-  let rendered = "";
-  const maxHeadingSpans = heading.split(/\s+/).length + 2;
-  for (const [index, span] of [...textLayer.querySelectorAll("span")].entries()) {
-    if (index >= maxHeadingSpans) break;
-    rendered = normalizeText(`${rendered} ${span.textContent}`);
-    span.remove();
-    if (rendered.includes(normalizeText(heading))) break;
+  const spans = [...textLayer.querySelectorAll("span")];
+  const first = spans.find(span => normalizeText(span.textContent));
+  if (!first) return;
+  const firstLineTop = first.getBoundingClientRect().top;
+  for (const span of spans) {
+    if (Math.abs(span.getBoundingClientRect().top - firstLineTop) < 2) span.remove();
   }
 }
 
