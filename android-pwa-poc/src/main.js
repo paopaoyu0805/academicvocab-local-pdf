@@ -33,18 +33,6 @@ function selectedTextLayerLine(selection) {
     .join(" "));
 }
 
-function disableLeadingHeadingSelection() {
-  const heading = currentPageText.split("\n", 1)[0]?.trim();
-  if (!heading || /[.!?]$/.test(heading)) return;
-  const spans = [...textLayer.querySelectorAll("span")];
-  const first = spans.find(span => normalizeText(span.textContent));
-  if (!first) return;
-  const firstLineTop = first.getBoundingClientRect().top;
-  for (const span of spans) {
-    if (Math.abs(span.getBoundingClientRect().top - firstLineTop) < 2) span.remove();
-  }
-}
-
 function setStatus(message) {
   status.textContent = message;
 }
@@ -110,7 +98,6 @@ async function renderPage(pageNumber) {
     container: textLayer,
     viewport
   }).render();
-  disableLeadingHeadingSelection();
 
   currentPage = pageNumber;
   pageStatus.textContent = `Page ${currentPage} of ${pdfDocument.numPages}`;
