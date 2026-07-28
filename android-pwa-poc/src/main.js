@@ -45,10 +45,11 @@ async function candidateContextText() {
   return pages.map(contextPageText).filter(Boolean).join("\n");
 }
 
-async function showCandidate(selected, selectedLine = "") {
+async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
   const candidate = extractCandidate({
     selectedText: selected,
     selectedLine,
+    selectedLineIsHeading,
     pageText: await candidateContextText()
   });
   document.querySelector("#selected-text").textContent = selected;
@@ -103,6 +104,11 @@ function textLayerLineForSpan(span) {
     .filter(item => Math.abs(item.getBoundingClientRect().top - top) < 2)
     .map(item => item.textContent)
     .join(" "));
+}
+
+function isHeadingSpan(span) {
+  const firstLineTop = firstTextLayerLineTop();
+  return firstLineTop !== null && Math.abs(span.getBoundingClientRect().top - firstLineTop) < 2;
 }
 
 function selectedTextLayerLine(selection) {
@@ -239,7 +245,10 @@ document.addEventListener("selectionchange", () => {
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
-  void showCandidate(selected, selectedTextLayerLine(selection));
+  const anchor = (selection.anchorNode?.nodeType === Node.TEXT_NODE
+    ? selection.anchorNode.parentElement
+    : selection.anchorNode)?.closest?.("span");
+  void showCandidate(selected, selectedTextLayerLine(selection), Boolean(anchor && isHeadingSpan(anchor)));
 });
 
 textLayer.addEventListener("pointerdown", event => {
@@ -259,7 +268,7 @@ textLayer.addEventListener("pointerup", event => {
   const line = textLayerLineForSpan(span);
   if (selected && line) {
     window.getSelection()?.removeAllRanges();
-    void showCandidate(selected, line);
+    void showCandidate(selected, line, isHeadingSpan(span));
   }
 });
 

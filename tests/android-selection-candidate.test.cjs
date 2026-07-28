@@ -45,6 +45,7 @@ test("never combines an unpunctuated selected heading with following body text",
   const result = extractCandidate({
     selectedText: "Stage",
     selectedLine: "AcademicVocab Stage 5 Test Fixture",
+    selectedLineIsHeading: true,
     pageText: "AcademicVocab Stage 5 Test Fixture\nThis PDF contains only public test text."
   });
   assert.equal(result.text, "AcademicVocab Stage 5 Test Fixture");
@@ -67,6 +68,17 @@ test("extracts a complete sentence when its text continues onto the next PDF pag
   const result = extractCandidate({
     selectedText: "antiviral",
     pageText: "The antiviral response was\nstronger in treated cells and remained stable during follow-up."
+  });
+  assert.equal(result.text, "The antiviral response was stronger in treated cells and remained stable during follow-up.");
+  assert.equal(result.requiresConfirmation, false);
+});
+
+test("uses the tapped line to disambiguate a repeated word in a cross-page sentence", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "antiviral",
+    selectedLine: "The antiviral response was",
+    pageText: "The antiviral response is enhanced through careful signaling.\nThe antiviral response was\nstronger in treated cells and remained stable during follow-up."
   });
   assert.equal(result.text, "The antiviral response was stronger in treated cells and remained stable during follow-up.");
   assert.equal(result.requiresConfirmation, false);

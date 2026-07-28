@@ -33,13 +33,13 @@ function sentenceBounds(text, index) {
   };
 }
 
-export function extractCandidate({ selectedText, pageText, selectedLine = "" }) {
+export function extractCandidate({ selectedText, pageText, selectedLine = "", selectedLineIsHeading = false }) {
   const selected = normalizeText(selectedText);
   if (!selected) {
     return { text: "", confidence: "low", requiresConfirmation: true, reason: "empty_selection" };
   }
   const line = normalizeText(selectedLine);
-  if (line && !/[.!?]$/.test(line) && line.toLocaleLowerCase("en-US").includes(selected.toLocaleLowerCase("en-US"))) {
+  if (selectedLineIsHeading && line && !/[.!?]$/.test(line) && line.toLocaleLowerCase("en-US").includes(selected.toLocaleLowerCase("en-US"))) {
     return {
       text: line,
       confidence: "low",
@@ -53,8 +53,11 @@ export function extractCandidate({ selectedText, pageText, selectedLine = "" }) 
     return { text: selected, confidence: "low", requiresConfirmation: true, reason: "page_text_unavailable" };
   }
   const lower = source.toLocaleLowerCase("en-US");
-  const occurrences = lower.split(needle).length - 1;
-  const index = lower.indexOf(needle);
+  const lineLower = line.toLocaleLowerCase("en-US");
+  const lineStart = line && lineLower.includes(needle) ? lower.indexOf(lineLower) : -1;
+  const anchoredIndex = lineStart >= 0 ? lineStart + lineLower.indexOf(needle) : -1;
+  const occurrences = anchoredIndex >= 0 ? 1 : lower.split(needle).length - 1;
+  const index = anchoredIndex >= 0 ? anchoredIndex : lower.indexOf(needle);
   const bounds = sentenceBounds(source, index);
   const text = normalizeText(/[.!?]$/.test(selected) ? selected : source.slice(bounds.start, bounds.end));
   const complete = /[.!?]$/.test(text);
