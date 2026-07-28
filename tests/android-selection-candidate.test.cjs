@@ -5,6 +5,10 @@ async function extractor() {
   return import("../android-pwa-poc/src/selection-candidate.js");
 }
 
+async function textLayout() {
+  return import("../android-pwa-poc/src/pdf-text-layout.js");
+}
+
 test("returns one complete on-page sentence for an unambiguous selection", async () => {
   const { extractCandidate } = await extractor();
   const result = extractCandidate({
@@ -106,4 +110,39 @@ test("never crosses an explicit PDF page boundary after a punctuation-free fragm
   });
   assert.equal(result.text, "Perforin opens pores; granzyme enters the cell");
   assert.equal(result.requiresConfirmation, true);
+});
+
+test("separates same-height text from left and right PDF columns", async () => {
+  const { groupVisualTextLines } = await textLayout();
+  const lines = groupVisualTextLines([
+    { text: "Antigen presentation remained", top: 100, left: 54, right: 190 },
+    { text: "Cytokine signaling remained", top: 100, left: 330, right: 456 }
+  ], 612);
+  assert.deepEqual(lines.map(line => line.text), [
+    "Antigen presentation remained",
+    "Cytokine signaling remained"
+  ]);
+});
+
+test("orders a two-column PDF down the left column before the right", async () => {
+  const { groupVisualTextLines, orderTextLinesForReading } = await textLayout();
+  const items = [
+    { text: "Two-column reading order.", top: -726, left: 54, right: 260 },
+    { text: "LEFT COLUMN.", top: -684, left: 54, right: 121 },
+    { text: "RIGHT COLUMN.", top: -684, left: 330, right: 402 },
+    { text: "Antigen presentation remained", top: -630, left: 54, right: 190 },
+    { text: "Cytokine signaling remained", top: -630, left: 330, right: 456 },
+    { text: "stable in the left column.", top: -613, left: 54, right: 162 },
+    { text: "stable in the right column.", top: -613, left: 330, right: 444 }
+  ];
+  const lines = groupVisualTextLines(items, 612);
+  assert.deepEqual(orderTextLinesForReading(lines, 612).map(line => line.text), [
+    "Two-column reading order.",
+    "LEFT COLUMN.",
+    "Antigen presentation remained",
+    "stable in the left column.",
+    "RIGHT COLUMN.",
+    "Cytokine signaling remained",
+    "stable in the right column."
+  ]);
 });

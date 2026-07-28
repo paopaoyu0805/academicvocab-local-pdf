@@ -1,4 +1,5 @@
 import { extractCandidate, normalizeText } from "./selection-candidate.js";
+import { groupVisualTextLines, orderTextLinesForReading } from "./pdf-text-layout.js";
 import { normalizeWordForm } from "./word-normalizer.js";
 import "./styles.css";
 
@@ -65,7 +66,10 @@ async function getPageText(pageNumber) {
   if (pageTextPromiseCache.has(pageNumber)) return pageTextPromiseCache.get(pageNumber);
   const pending = (async () => {
     const page = await pdfDocument.getPage(pageNumber);
-    const text = pageTextFromItems((await page.getTextContent()).items);
+    const text = pageTextFromItems(
+      (await page.getTextContent()).items,
+      page.getViewport({ scale: 1 }).width
+    );
     pageTextCache.set(pageNumber, text);
     return text;
   })();
@@ -238,45 +242,36 @@ function localErrorDetails(error) {
   return message ? `${category}: ${message}` : category;
 }
 
-function pageTextFromItems(items) {
-  const lines = [];
-  let line = null;
-  for (const item of items) {
-    const text = String(item.str || "");
-    const y = Number(item.transform?.[5]);
-    if (!text) continue;
-    if (line && Number.isFinite(y) && Math.abs(line.y - y) > 2) {
-      lines.push(line.parts.join(" "));
-      line = null;
-    }
-    if (!line) line = { y, parts: [] };
-    line.parts.push(text);
-  }
-  if (line) lines.push(line.parts.join(" "));
-  return lines.join("\n");
+function pageTextFromItems(items, pageWidth) {
+  const visualItems = items.map(item => ({
+    text: item.str,
+    top: -Number(item.transform?.[5]),
+    left: Number(item.transform?.[4]),
+    right: Number(item.transform?.[4]) + Number(item.width || 0)
+  }));
+  const lines = groupVisualTextLines(visualItems, pageWidth);
+  return orderTextLinesForReading(lines, pageWidth).map(line => line.text).join("\n");
 }
 
 function indexTextLayerLines() {
   spanLineTextCache = new WeakMap();
   headingSpans = new WeakSet();
-  const groups = [];
-  for (const span of textLayer.querySelectorAll("span")) {
-    const top = span.getBoundingClientRect().top;
-    let group = groups.find(item => Math.abs(item.top - top) < 2);
-    if (!group) {
-      group = { top, spans: [] };
-      groups.push(group);
-    }
-    group.spans.push(span);
+  const layerRect = textLayer.getBoundingClientRect();
+  const visualItems = [...textLayer.querySelectorAll("span")].map(span => {
+    const rect = span.getBoundingClientRect();
+    return {
+      element: span,
+      text: span.textContent,
+      top: rect.top,
+      left: rect.left,
+      right: rect.right
+    };
+  });
+  const meaningfulLines = groupVisualTextLines(visualItems, layerRect.width);
+  for (const line of meaningfulLines) {
+    for (const item of line.items) spanLineTextCache.set(item.element, line.text);
   }
-  const meaningfulGroups = groups.filter(group =>
-    normalizeText(group.spans.map(span => span.textContent).join(" "))
-  );
-  for (const group of meaningfulGroups) {
-    const line = normalizeText(group.spans.map(span => span.textContent).join(" "));
-    for (const span of group.spans) spanLineTextCache.set(span, line);
-  }
-  for (const span of meaningfulGroups[0]?.spans || []) headingSpans.add(span);
+  for (const item of meaningfulLines[0]?.items || []) headingSpans.add(item.element);
 }
 
 function prefetchSelectionResources(pageNumber) {
@@ -303,7 +298,7 @@ async function renderPage(pageNumber) {
   }).promise;
 
   const textContent = await page.getTextContent();
-  currentPageText = pageTextFromItems(textContent.items);
+  currentPageText = pageTextFromItems(textContent.items, baseViewport.width);
   pageTextCache.set(pageNumber, currentPageText);
   textLayer.replaceChildren();
   textLayer.style.width = `${Math.floor(viewport.width)}px`;
