@@ -51,3 +51,13 @@ test("never combines an unpunctuated selected heading with following body text",
   assert.equal(result.reason, "heading_selection");
   assert.equal(result.requiresConfirmation, true);
 });
+
+test("joins a word split by a hyphenated PDF line break before extracting its sentence", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "international",
+    pageText: "The inter-\nnational study reported a reproducible immune response."
+  });
+  assert.equal(result.text, "The international study reported a reproducible immune response.");
+  assert.equal(result.requiresConfirmation, false);
+});

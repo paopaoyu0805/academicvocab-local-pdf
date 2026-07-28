@@ -59,7 +59,22 @@ function wordAtHorizontalPoint(span, clientX) {
   const after = text.slice(offset);
   const endSpace = after.indexOf(" ");
   const end = endSpace < 0 ? text.length : offset + endSpace;
-  return normalizeText(text.slice(start, end).replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, ""));
+  return normalizeText(text.slice(start, end).replace(/^[^A-Za-z-]+|[^A-Za-z-]+$/g, ""));
+}
+
+function expandHyphenatedTapWord(word) {
+  if (!word.endsWith("-")) return word;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const continuation = currentPageText.match(new RegExp(`${escaped}\\s*\\n\\s*([A-Za-z]+)`));
+  return continuation ? `${word.slice(0, -1)}${continuation[1]}` : word;
+}
+
+function textLayerLineForSpan(span) {
+  const top = span.getBoundingClientRect().top;
+  return normalizeText([...textLayer.querySelectorAll("span")]
+    .filter(item => Math.abs(item.getBoundingClientRect().top - top) < 2)
+    .map(item => item.textContent)
+    .join(" "));
 }
 
 function selectedTextLayerLine(selection) {
@@ -199,8 +214,7 @@ document.addEventListener("selectionchange", () => {
 
 textLayer.addEventListener("pointerdown", event => {
   const span = event.target.closest?.("span");
-  const firstLineTop = firstTextLayerLineTop();
-  if (!span || firstLineTop === null || Math.abs(span.getBoundingClientRect().top - firstLineTop) >= 2) return;
+  if (!span) return;
   titleTapStart = { x: event.clientX, y: event.clientY };
   event.preventDefault();
 });
@@ -210,13 +224,12 @@ textLayer.addEventListener("pointerup", event => {
   titleTapStart = null;
   if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return;
   const span = event.target.closest?.("span");
-  const firstLineTop = firstTextLayerLineTop();
-  if (!span || firstLineTop === null || Math.abs(span.getBoundingClientRect().top - firstLineTop) >= 2) return;
-  const selected = wordAtHorizontalPoint(span, event.clientX);
-  const heading = normalizeText(currentPageText.split("\n", 1)[0]);
-  if (selected && heading) {
+  if (!span) return;
+  const selected = expandHyphenatedTapWord(wordAtHorizontalPoint(span, event.clientX));
+  const line = textLayerLineForSpan(span);
+  if (selected && line) {
     window.getSelection()?.removeAllRanges();
-    showCandidate(selected, heading);
+    showCandidate(selected, line);
   }
 });
 

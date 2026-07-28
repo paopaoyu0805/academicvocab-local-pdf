@@ -5,6 +5,7 @@ export function normalizeText(value) {
 function normalizePageText(value) {
   return String(value || "")
     .replace(/\r\n?/g, "\n")
+    .replace(/([A-Za-z])-\s*\n\s*([A-Za-z])/g, "$1$2")
     .replace(/[ \t]+/g, " ")
     .replace(/\n{2,}/g, "\n")
     .trim();
