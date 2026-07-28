@@ -40,7 +40,7 @@ export function extractCandidate({ selectedText, pageText, selectedLine = "" }) 
   const line = normalizeText(selectedLine);
   if (line && !/[.!?]$/.test(line) && line.toLocaleLowerCase("en-US").includes(selected.toLocaleLowerCase("en-US"))) {
     return {
-      text: selected,
+      text: line,
       confidence: "low",
       requiresConfirmation: true,
       reason: "heading_selection"

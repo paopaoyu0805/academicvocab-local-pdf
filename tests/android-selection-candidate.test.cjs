@@ -47,7 +47,7 @@ test("never combines an unpunctuated selected heading with following body text",
     selectedLine: "AcademicVocab Stage 5 Test Fixture",
     pageText: "AcademicVocab Stage 5 Test Fixture\nThis PDF contains only public test text."
   });
-  assert.equal(result.text, "Stage");
+  assert.equal(result.text, "AcademicVocab Stage 5 Test Fixture");
   assert.equal(result.reason, "heading_selection");
   assert.equal(result.requiresConfirmation, true);
 });
