@@ -73,8 +73,13 @@ async function selectedLineMayContinue(selectedLine) {
 }
 
 async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
-  wordNormalizerPromise ||= import("./word-normalizer.js");
-  const { normalizeWordForm } = await wordNormalizerPromise;
+  document.querySelector("#selected-text").textContent = selected;
+  document.querySelector("#lemma-text").textContent = "加载中…";
+  document.querySelector("#candidate-text").textContent = "正在提取例句…";
+  document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
+  document.querySelector("#candidate-assessment").textContent = "候选正在本地处理。";
+  selectionPanel.hidden = false;
+
   const candidate = extractCandidate({
     selectedText: selected,
     selectedLine,
@@ -82,17 +87,28 @@ async function showCandidate(selected, selectedLine = "", selectedLineIsHeading 
     selectedLineMayContinue: await selectedLineMayContinue(selectedLine),
     pageText: await candidateContextText()
   });
-  document.querySelector("#selected-text").textContent = selected;
-  const wordForm = normalizeWordForm(selected, candidate.text);
-  document.querySelector("#lemma-text").textContent = wordForm.ambiguous
-    ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
-    : wordForm.lemma;
   document.querySelector("#candidate-text").textContent = candidate.text;
-  document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
-  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation || wordForm.ambiguous
+  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation
     ? "Confirmation required: ambiguous or incomplete candidates are not saved."
     : "Complete local candidate; this prototype still does not save it.";
-  selectionPanel.hidden = false;
+
+  try {
+    wordNormalizerPromise ||= import("./word-normalizer.js");
+    const { normalizeWordForm } = await wordNormalizerPromise;
+    const wordForm = normalizeWordForm(selected, candidate.text);
+    document.querySelector("#lemma-text").textContent = wordForm.ambiguous
+      ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
+      : wordForm.lemma;
+    if (wordForm.ambiguous) {
+      document.querySelector("#candidate-assessment").textContent =
+        "Confirmation required: the base form is ambiguous and nothing is saved.";
+    }
+  }
+  catch {
+    wordNormalizerPromise = null;
+    document.querySelector("#lemma-text").textContent =
+      `${selected.toLocaleLowerCase("en-US")}（词形词典加载失败）`;
+  }
 }
 
 function firstTextLayerLineTop() {
