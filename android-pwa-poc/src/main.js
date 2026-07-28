@@ -190,6 +190,7 @@ nextButton.addEventListener("click", () => {
 document.querySelector("#dismiss-selection").addEventListener("click", clearSelection);
 
 document.addEventListener("selectionchange", () => {
+  if (titleTapStart) return;
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
@@ -197,18 +198,26 @@ document.addEventListener("selectionchange", () => {
 });
 
 textLayer.addEventListener("pointerdown", event => {
+  const span = event.target.closest?.("span");
+  const firstLineTop = firstTextLayerLineTop();
+  if (!span || firstLineTop === null || Math.abs(span.getBoundingClientRect().top - firstLineTop) >= 2) return;
   titleTapStart = { x: event.clientX, y: event.clientY };
+  event.preventDefault();
 });
 
 textLayer.addEventListener("pointerup", event => {
-  if (!titleTapStart || Math.hypot(event.clientX - titleTapStart.x, event.clientY - titleTapStart.y) > 12) return;
+  const start = titleTapStart;
+  titleTapStart = null;
+  if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return;
   const span = event.target.closest?.("span");
   const firstLineTop = firstTextLayerLineTop();
-  titleTapStart = null;
   if (!span || firstLineTop === null || Math.abs(span.getBoundingClientRect().top - firstLineTop) >= 2) return;
   const selected = wordAtHorizontalPoint(span, event.clientX);
   const heading = normalizeText(currentPageText.split("\n", 1)[0]);
-  if (selected && heading) showCandidate(selected, heading);
+  if (selected && heading) {
+    window.getSelection()?.removeAllRanges();
+    showCandidate(selected, heading);
+  }
 });
 
 if ("serviceWorker" in navigator) {
