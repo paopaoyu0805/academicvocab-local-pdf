@@ -15,12 +15,16 @@ const previousButton = document.querySelector("#previous-page");
 const nextButton = document.querySelector("#next-page");
 const pageStatus = document.querySelector("#page-status");
 const selectionPanel = document.querySelector("#selection-panel");
+const lemmaRow = document.createElement("div");
+lemmaRow.innerHTML = "<dt>原形</dt><dd id=\"lemma-text\"></dd>";
+document.querySelector("#selected-text").parentElement.after(lemmaRow);
 
 let pdfDocument = null;
 let currentPage = 1;
 let currentPageText = "";
 let titleTapStart = null;
 let suppressNativeSelectionUntil = 0;
+let wordNormalizerPromise = null;
 const pageTextCache = new Map();
 
 function contextPageText(text) {
@@ -69,6 +73,8 @@ async function selectedLineMayContinue(selectedLine) {
 }
 
 async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
+  wordNormalizerPromise ||= import("./word-normalizer.js");
+  const { normalizeWordForm } = await wordNormalizerPromise;
   const candidate = extractCandidate({
     selectedText: selected,
     selectedLine,
@@ -77,9 +83,13 @@ async function showCandidate(selected, selectedLine = "", selectedLineIsHeading 
     pageText: await candidateContextText()
   });
   document.querySelector("#selected-text").textContent = selected;
+  const wordForm = normalizeWordForm(selected, candidate.text);
+  document.querySelector("#lemma-text").textContent = wordForm.ambiguous
+    ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
+    : wordForm.lemma;
   document.querySelector("#candidate-text").textContent = candidate.text;
   document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
-  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation
+  document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation || wordForm.ambiguous
     ? "Confirmation required: ambiguous or incomplete candidates are not saved."
     : "Complete local candidate; this prototype still does not save it.";
   selectionPanel.hidden = false;
