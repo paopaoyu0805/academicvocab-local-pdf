@@ -22,7 +22,9 @@ let currentPageText = "";
 
 function selectedTextLayerLine(selection) {
   if (!selection?.rangeCount) return "";
-  const anchor = selection.anchorNode?.parentElement?.closest?.("span");
+  const anchor = (selection.anchorNode?.nodeType === Node.TEXT_NODE
+    ? selection.anchorNode.parentElement
+    : selection.anchorNode)?.closest?.("span");
   if (!anchor || !textLayer.contains(anchor)) return "";
   const top = anchor.getBoundingClientRect().top;
   return normalizeText([...textLayer.querySelectorAll("span")]
@@ -38,8 +40,8 @@ function disableLeadingHeadingSelection() {
   const maxHeadingSpans = heading.split(/\s+/).length + 2;
   for (const [index, span] of [...textLayer.querySelectorAll("span")].entries()) {
     if (index >= maxHeadingSpans) break;
-    span.classList.add("pdf-heading");
     rendered = normalizeText(`${rendered} ${span.textContent}`);
+    span.remove();
     if (rendered.includes(normalizeText(heading))) break;
   }
 }
