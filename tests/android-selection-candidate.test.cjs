@@ -78,8 +78,22 @@ test("uses the tapped line to disambiguate a repeated word in a cross-page sente
   const result = extractCandidate({
     selectedText: "antiviral",
     selectedLine: "The antiviral response was",
+    selectedLineMayContinue: true,
     pageText: "The antiviral response is enhanced through careful signaling.\nThe antiviral response was\nstronger in treated cells and remained stable during follow-up."
   });
   assert.equal(result.text, "The antiviral response was stronger in treated cells and remained stable during follow-up.");
   assert.equal(result.requiresConfirmation, false);
+});
+
+test("keeps a punctuation-free line separate when the next block starts a new sentence", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "granzyme",
+    selectedLine: "Perforin opens pores; granzyme enters the cell",
+    selectedLineMayContinue: false,
+    pageText: "Perforin opens pores; granzyme enters the cell\nTwo-column reading order."
+  });
+  assert.equal(result.text, "Perforin opens pores; granzyme enters the cell");
+  assert.equal(result.reason, "punctuation_free_fragment");
+  assert.equal(result.requiresConfirmation, true);
 });

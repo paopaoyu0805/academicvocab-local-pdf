@@ -45,11 +45,27 @@ async function candidateContextText() {
   return pages.map(contextPageText).filter(Boolean).join("\n");
 }
 
+async function selectedLineMayContinue(selectedLine) {
+  const line = normalizeText(selectedLine);
+  if (!line || /[.!?]$/.test(line)) return false;
+  const currentLines = contextPageText(currentPageText).split("\n").map(normalizeText).filter(Boolean);
+  const lineIndex = currentLines.indexOf(line);
+  if (lineIndex >= 0 && lineIndex < currentLines.length - 1) {
+    return /^[a-z]/.test(currentLines[lineIndex + 1]);
+  }
+  if (lineIndex === currentLines.length - 1 && currentPage < pdfDocument.numPages) {
+    const nextFirstLine = contextPageText(await getPageText(currentPage + 1)).split("\n").map(normalizeText).find(Boolean) || "";
+    return /^[a-z]/.test(nextFirstLine);
+  }
+  return false;
+}
+
 async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
   const candidate = extractCandidate({
     selectedText: selected,
     selectedLine,
     selectedLineIsHeading,
+    selectedLineMayContinue: await selectedLineMayContinue(selectedLine),
     pageText: await candidateContextText()
   });
   document.querySelector("#selected-text").textContent = selected;

@@ -33,7 +33,13 @@ function sentenceBounds(text, index) {
   };
 }
 
-export function extractCandidate({ selectedText, pageText, selectedLine = "", selectedLineIsHeading = false }) {
+export function extractCandidate({
+  selectedText,
+  pageText,
+  selectedLine = "",
+  selectedLineIsHeading = false,
+  selectedLineMayContinue = false
+}) {
   const selected = normalizeText(selectedText);
   if (!selected) {
     return { text: "", confidence: "low", requiresConfirmation: true, reason: "empty_selection" };
@@ -45,6 +51,15 @@ export function extractCandidate({ selectedText, pageText, selectedLine = "", se
       confidence: "low",
       requiresConfirmation: true,
       reason: "heading_selection"
+    };
+  }
+  if (!selectedLineIsHeading && line && !/[.!?]$/.test(line) && !selectedLineMayContinue
+    && line.toLocaleLowerCase("en-US").includes(selected.toLocaleLowerCase("en-US"))) {
+    return {
+      text: line,
+      confidence: "low",
+      requiresConfirmation: true,
+      reason: "punctuation_free_fragment"
     };
   }
   const needle = selected.toLocaleLowerCase("en-US");
