@@ -20,6 +20,30 @@ let pdfDocument = null;
 let currentPage = 1;
 let currentPageText = "";
 
+function selectedTextLayerLine(selection) {
+  if (!selection?.rangeCount) return "";
+  const anchor = selection.anchorNode?.parentElement?.closest?.("span");
+  if (!anchor || !textLayer.contains(anchor)) return "";
+  const top = anchor.getBoundingClientRect().top;
+  return normalizeText([...textLayer.querySelectorAll("span")]
+    .filter(span => Math.abs(span.getBoundingClientRect().top - top) < 2)
+    .map(span => span.textContent)
+    .join(" "));
+}
+
+function disableLeadingHeadingSelection() {
+  const heading = currentPageText.split("\n", 1)[0]?.trim();
+  if (!heading || /[.!?]$/.test(heading)) return;
+  let rendered = "";
+  const maxHeadingSpans = heading.split(/\s+/).length + 2;
+  for (const [index, span] of [...textLayer.querySelectorAll("span")].entries()) {
+    if (index >= maxHeadingSpans) break;
+    span.classList.add("pdf-heading");
+    rendered = normalizeText(`${rendered} ${span.textContent}`);
+    if (rendered.includes(normalizeText(heading))) break;
+  }
+}
+
 function setStatus(message) {
   status.textContent = message;
 }
@@ -85,6 +109,7 @@ async function renderPage(pageNumber) {
     container: textLayer,
     viewport
   }).render();
+  disableLeadingHeadingSelection();
 
   currentPage = pageNumber;
   pageStatus.textContent = `Page ${currentPage} of ${pdfDocument.numPages}`;
@@ -138,7 +163,11 @@ document.addEventListener("selectionchange", () => {
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
-  const candidate = extractCandidate({ selectedText: selected, pageText: currentPageText });
+  const candidate = extractCandidate({
+    selectedText: selected,
+    selectedLine: selectedTextLayerLine(selection),
+    pageText: currentPageText
+  });
   document.querySelector("#selected-text").textContent = selected;
   document.querySelector("#candidate-text").textContent = candidate.text;
   document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;

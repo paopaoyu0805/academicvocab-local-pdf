@@ -39,3 +39,15 @@ test("does not treat an unpunctuated first-line heading as part of the candidate
   assert.equal(result.text, "This PDF contains only public test text.");
   assert.equal(result.requiresConfirmation, false);
 });
+
+test("never combines an unpunctuated selected heading with following body text", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "Stage",
+    selectedLine: "AcademicVocab Stage 5 Test Fixture",
+    pageText: "AcademicVocab Stage 5 Test Fixture\nThis PDF contains only public test text."
+  });
+  assert.equal(result.text, "Stage");
+  assert.equal(result.reason, "heading_selection");
+  assert.equal(result.requiresConfirmation, true);
+});

@@ -32,10 +32,19 @@ function sentenceBounds(text, index) {
   };
 }
 
-export function extractCandidate({ selectedText, pageText }) {
+export function extractCandidate({ selectedText, pageText, selectedLine = "" }) {
   const selected = normalizeText(selectedText);
   if (!selected) {
     return { text: "", confidence: "low", requiresConfirmation: true, reason: "empty_selection" };
+  }
+  const line = normalizeText(selectedLine);
+  if (line && !/[.!?]$/.test(line) && line.toLocaleLowerCase("en-US").includes(selected.toLocaleLowerCase("en-US"))) {
+    return {
+      text: selected,
+      confidence: "low",
+      requiresConfirmation: true,
+      reason: "heading_selection"
+    };
   }
   const needle = selected.toLocaleLowerCase("en-US");
   const source = removeLeadingUnpunctuatedHeading(normalizePageText(pageText), needle);
