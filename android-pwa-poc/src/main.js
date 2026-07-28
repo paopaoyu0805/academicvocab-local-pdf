@@ -1,10 +1,5 @@
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
-import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
-import "pdfjs-dist/web/pdf_viewer.css";
 import { extractCandidate, normalizeText } from "./selection-candidate.js";
 import "./styles.css";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 const input = document.querySelector("#pdf-file");
 const status = document.querySelector("#file-status");
@@ -25,7 +20,43 @@ let currentPageText = "";
 let titleTapStart = null;
 let suppressNativeSelectionUntil = 0;
 let wordNormalizerPromise = null;
+let pdfEnginePromise = null;
+let pdfjsLib = null;
 const pageTextCache = new Map();
+const pageTextPromiseCache = new Map();
+let spanLineTextCache = new WeakMap();
+let headingSpans = new WeakSet();
+let selectionRequestId = 0;
+
+function scheduleIdle(callback) {
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(callback, { timeout: 2500 });
+    return;
+  }
+  window.setTimeout(callback, 250);
+}
+
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => resolve()));
+}
+
+function loadWordNormalizer() {
+  wordNormalizerPromise ||= import("./word-normalizer.js");
+  return wordNormalizerPromise;
+}
+
+function loadPdfEngine() {
+  pdfEnginePromise ||= Promise.all([
+    import("pdfjs-dist/legacy/build/pdf.mjs"),
+    import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url"),
+    import("pdfjs-dist/web/pdf_viewer.css")
+  ]).then(([library, worker]) => {
+    library.GlobalWorkerOptions.workerSrc = worker.default;
+    pdfjsLib = library;
+    return library;
+  });
+  return pdfEnginePromise;
+}
 
 function contextPageText(text) {
   const lines = String(text || "").split("\n").map(line => line.trim()).filter(Boolean);
@@ -36,17 +67,28 @@ function contextPageText(text) {
 
 async function getPageText(pageNumber) {
   if (pageTextCache.has(pageNumber)) return pageTextCache.get(pageNumber);
-  const page = await pdfDocument.getPage(pageNumber);
-  const text = pageTextFromItems((await page.getTextContent()).items);
-  pageTextCache.set(pageNumber, text);
-  return text;
+  if (pageTextPromiseCache.has(pageNumber)) return pageTextPromiseCache.get(pageNumber);
+  const pending = (async () => {
+    const page = await pdfDocument.getPage(pageNumber);
+    const text = pageTextFromItems((await page.getTextContent()).items);
+    pageTextCache.set(pageNumber, text);
+    return text;
+  })();
+  pageTextPromiseCache.set(pageNumber, pending);
+  try {
+    return await pending;
+  }
+  finally {
+    pageTextPromiseCache.delete(pageNumber);
+  }
 }
 
 async function candidateContextText() {
-  const pages = [];
-  if (currentPage > 1) pages.push(await getPageText(currentPage - 1));
-  pages.push(currentPageText);
-  if (currentPage < pdfDocument.numPages) pages.push(await getPageText(currentPage + 1));
+  const pageRequests = [];
+  if (currentPage > 1) pageRequests.push(getPageText(currentPage - 1));
+  pageRequests.push(Promise.resolve(currentPageText));
+  if (currentPage < pdfDocument.numPages) pageRequests.push(getPageText(currentPage + 1));
+  const pages = await Promise.all(pageRequests);
   const cleaned = pages.map(contextPageText).filter(Boolean);
   return cleaned.reduce((combined, nextPage) => {
     if (!combined) return nextPage;
@@ -73,12 +115,14 @@ async function selectedLineMayContinue(selectedLine) {
 }
 
 async function showCandidate(selected, selectedLine = "", selectedLineIsHeading = false) {
+  const requestId = ++selectionRequestId;
   document.querySelector("#selected-text").textContent = selected;
   document.querySelector("#lemma-text").textContent = "加载中…";
   document.querySelector("#candidate-text").textContent = "正在提取例句…";
   document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
   document.querySelector("#candidate-assessment").textContent = "候选正在本地处理。";
   selectionPanel.hidden = false;
+  await nextPaint();
 
   const candidate = extractCandidate({
     selectedText: selected,
@@ -87,14 +131,15 @@ async function showCandidate(selected, selectedLine = "", selectedLineIsHeading 
     selectedLineMayContinue: await selectedLineMayContinue(selectedLine),
     pageText: await candidateContextText()
   });
+  if (requestId !== selectionRequestId) return;
   document.querySelector("#candidate-text").textContent = candidate.text;
   document.querySelector("#candidate-assessment").textContent = candidate.requiresConfirmation
     ? "Confirmation required: ambiguous or incomplete candidates are not saved."
     : "Complete local candidate; this prototype still does not save it.";
 
   try {
-    wordNormalizerPromise ||= import("./word-normalizer.js");
-    const { normalizeWordForm } = await wordNormalizerPromise;
+    const { normalizeWordForm } = await loadWordNormalizer();
+    if (requestId !== selectionRequestId) return;
     const wordForm = normalizeWordForm(selected, candidate.text);
     document.querySelector("#lemma-text").textContent = wordForm.ambiguous
       ? `${wordForm.lemma}（另一个可能：${wordForm.alternatives.join("、")}）`
@@ -106,33 +151,43 @@ async function showCandidate(selected, selectedLine = "", selectedLineIsHeading 
   }
   catch {
     wordNormalizerPromise = null;
+    if (requestId !== selectionRequestId) return;
     document.querySelector("#lemma-text").textContent =
       `${selected.toLocaleLowerCase("en-US")}（词形词典加载失败）`;
   }
 }
 
-function firstTextLayerLineTop() {
-  const first = [...textLayer.querySelectorAll("span")].find(span => normalizeText(span.textContent));
-  return first ? first.getBoundingClientRect().top : null;
+function caretOffsetAtPoint(span, clientX, clientY) {
+  const textNode = span.firstChild;
+  if (!textNode) return null;
+  const position = document.caretPositionFromPoint?.(clientX, clientY);
+  if (position?.offsetNode === textNode) return position.offset;
+  const range = document.caretRangeFromPoint?.(clientX, clientY);
+  if (range?.startContainer === textNode) return range.startOffset;
+  return null;
 }
 
-function wordAtHorizontalPoint(span, clientX) {
+function wordAtPoint(span, clientX, clientY) {
   const textNode = span.firstChild;
   const text = String(textNode?.textContent || "");
   if (!textNode || !text.trim()) return "";
-  let offset = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index < text.length; index += 1) {
-    const range = document.createRange();
-    range.setStart(textNode, index);
-    range.setEnd(textNode, index + 1);
-    const rect = range.getBoundingClientRect();
-    const distance = Math.abs(clientX - (rect.left + rect.right) / 2);
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      offset = index;
+  let offset = caretOffsetAtPoint(span, clientX, clientY);
+  if (offset === null) {
+    offset = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < text.length; index += 1) {
+      const range = document.createRange();
+      range.setStart(textNode, index);
+      range.setEnd(textNode, index + 1);
+      const rect = range.getBoundingClientRect();
+      const distance = Math.abs(clientX - (rect.left + rect.right) / 2);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        offset = index;
+      }
     }
   }
+  offset = Math.min(Math.max(offset, 0), text.length - 1);
   const before = text.slice(0, offset + 1);
   const start = Math.max(before.lastIndexOf(" ") + 1, 0);
   const after = text.slice(offset);
@@ -149,6 +204,8 @@ function expandHyphenatedTapWord(word) {
 }
 
 function textLayerLineForSpan(span) {
+  const cached = spanLineTextCache.get(span);
+  if (cached) return cached;
   const top = span.getBoundingClientRect().top;
   return normalizeText([...textLayer.querySelectorAll("span")]
     .filter(item => Math.abs(item.getBoundingClientRect().top - top) < 2)
@@ -157,8 +214,7 @@ function textLayerLineForSpan(span) {
 }
 
 function isHeadingSpan(span) {
-  const firstLineTop = firstTextLayerLineTop();
-  return firstLineTop !== null && Math.abs(span.getBoundingClientRect().top - firstLineTop) < 2;
+  return headingSpans.has(span);
 }
 
 function selectedTextLayerLine(selection) {
@@ -167,6 +223,8 @@ function selectedTextLayerLine(selection) {
     ? selection.anchorNode.parentElement
     : selection.anchorNode)?.closest?.("span");
   if (!anchor || !textLayer.contains(anchor)) return "";
+  const cached = spanLineTextCache.get(anchor);
+  if (cached) return cached;
   const top = anchor.getBoundingClientRect().top;
   return normalizeText([...textLayer.querySelectorAll("span")]
     .filter(span => Math.abs(span.getBoundingClientRect().top - top) < 2)
@@ -213,12 +271,45 @@ function pageTextFromItems(items) {
   return lines.join("\n");
 }
 
+function indexTextLayerLines() {
+  spanLineTextCache = new WeakMap();
+  headingSpans = new WeakSet();
+  const groups = [];
+  for (const span of textLayer.querySelectorAll("span")) {
+    const top = span.getBoundingClientRect().top;
+    let group = groups.find(item => Math.abs(item.top - top) < 2);
+    if (!group) {
+      group = { top, spans: [] };
+      groups.push(group);
+    }
+    group.spans.push(span);
+  }
+  const meaningfulGroups = groups.filter(group =>
+    normalizeText(group.spans.map(span => span.textContent).join(" "))
+  );
+  for (const group of meaningfulGroups) {
+    const line = normalizeText(group.spans.map(span => span.textContent).join(" "));
+    for (const span of group.spans) spanLineTextCache.set(span, line);
+  }
+  for (const span of meaningfulGroups[0]?.spans || []) headingSpans.add(span);
+}
+
+function prefetchSelectionResources(pageNumber) {
+  scheduleIdle(() => {
+    void loadWordNormalizer().catch(() => {
+      wordNormalizerPromise = null;
+    });
+    if (pageNumber > 1) void getPageText(pageNumber - 1).catch(() => {});
+    if (pageNumber < pdfDocument.numPages) void getPageText(pageNumber + 1).catch(() => {});
+  });
+}
+
 async function renderPage(pageNumber) {
   const page = await pdfDocument.getPage(pageNumber);
   const baseViewport = page.getViewport({ scale: 1 });
   const scale = Math.min(window.innerWidth - 32, 720) / baseViewport.width;
   const viewport = page.getViewport({ scale });
-  const outputScale = window.devicePixelRatio || 1;
+  const outputScale = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.floor(viewport.width * outputScale);
   canvas.height = Math.floor(viewport.height * outputScale);
   canvas.style.width = `${Math.floor(viewport.width)}px`;
@@ -240,17 +331,21 @@ async function renderPage(pageNumber) {
     container: textLayer,
     viewport
   }).render();
+  indexTextLayerLines();
 
   currentPage = pageNumber;
   pageStatus.textContent = `Page ${currentPage} of ${pdfDocument.numPages}`;
   previousButton.disabled = currentPage <= 1;
   nextButton.disabled = currentPage >= pdfDocument.numPages;
+  prefetchSelectionResources(pageNumber);
 }
 
 async function openLocalPdf(file) {
+  await loadPdfEngine();
   const data = new Uint8Array(await file.arrayBuffer());
   pdfDocument?.destroy();
   pageTextCache.clear();
+  pageTextPromiseCache.clear();
   pdfDocument = await pdfjsLib.getDocument({
     data,
     disableAutoFetch: true,
@@ -315,7 +410,7 @@ textLayer.addEventListener("pointerup", event => {
   if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 12) return;
   const span = event.target.closest?.("span");
   if (!span) return;
-  const selected = expandHyphenatedTapWord(wordAtHorizontalPoint(span, event.clientX));
+  const selected = expandHyphenatedTapWord(wordAtPoint(span, event.clientX, event.clientY));
   const line = textLayerLineForSpan(span);
   if (selected && line) {
     suppressNativeSelectionUntil = performance.now() + 800;
@@ -324,8 +419,14 @@ textLayer.addEventListener("pointerup", event => {
   }
 });
 
+scheduleIdle(() => {
+  void loadPdfEngine().catch(() => {
+    pdfEnginePromise = null;
+  });
+});
+
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {
+  navigator.serviceWorker.register("./sw.js").catch(() => {
     setStatus("The offline shell is unavailable. Local PDFs still are not uploaded.");
   });
 }
