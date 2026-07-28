@@ -12,6 +12,7 @@ Thumbs.db
 .cache
 tmp
 temp
+cache
 test-results
 playwright-report
 private-pdfs

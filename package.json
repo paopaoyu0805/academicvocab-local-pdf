@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "pdfjs-dist": "6.1.200",
+    "vite": "8.1.5"
+  },
+  "scripts": {
+    "test": "node --test tests\\sentence-extractor.test.cjs tests\\marker-ownership.test.cjs tests\\local-capture-store.test.cjs tests\\android-selection-candidate.test.cjs",
+    "build": "vite build android-pwa-poc",
+    "dev": "vite android-pwa-poc --host 0.0.0.0"
+  }
+}
