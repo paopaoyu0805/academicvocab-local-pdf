@@ -61,3 +61,13 @@ test("joins a word split by a hyphenated PDF line break before extracting its se
   assert.equal(result.text, "The international study reported a reproducible immune response.");
   assert.equal(result.requiresConfirmation, false);
 });
+
+test("extracts a complete sentence when its text continues onto the next PDF page", async () => {
+  const { extractCandidate } = await extractor();
+  const result = extractCandidate({
+    selectedText: "antiviral",
+    pageText: "The antiviral response was\nstronger in treated cells and remained stable during follow-up."
+  });
+  assert.equal(result.text, "The antiviral response was stronger in treated cells and remained stable during follow-up.");
+  assert.equal(result.requiresConfirmation, false);
+});

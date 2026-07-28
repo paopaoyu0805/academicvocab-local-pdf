@@ -20,9 +20,37 @@ let pdfDocument = null;
 let currentPage = 1;
 let currentPageText = "";
 let titleTapStart = null;
+const pageTextCache = new Map();
 
-function showCandidate(selected, selectedLine = "") {
-  const candidate = extractCandidate({ selectedText: selected, selectedLine, pageText: currentPageText });
+function contextPageText(text) {
+  const lines = String(text || "").split("\n").map(line => line.trim()).filter(Boolean);
+  if (/\bpage\s+\d+\b/i.test(lines[0] || "")) lines.shift();
+  if (/^\d+$/.test(lines.at(-1) || "")) lines.pop();
+  return lines.join("\n");
+}
+
+async function getPageText(pageNumber) {
+  if (pageTextCache.has(pageNumber)) return pageTextCache.get(pageNumber);
+  const page = await pdfDocument.getPage(pageNumber);
+  const text = pageTextFromItems((await page.getTextContent()).items);
+  pageTextCache.set(pageNumber, text);
+  return text;
+}
+
+async function candidateContextText() {
+  const pages = [];
+  if (currentPage > 1) pages.push(await getPageText(currentPage - 1));
+  pages.push(currentPageText);
+  if (currentPage < pdfDocument.numPages) pages.push(await getPageText(currentPage + 1));
+  return pages.map(contextPageText).filter(Boolean).join("\n");
+}
+
+async function showCandidate(selected, selectedLine = "") {
+  const candidate = extractCandidate({
+    selectedText: selected,
+    selectedLine,
+    pageText: await candidateContextText()
+  });
   document.querySelector("#selected-text").textContent = selected;
   document.querySelector("#candidate-text").textContent = candidate.text;
   document.querySelector("#candidate-source").textContent = `Current PDF page ${currentPage}; memory only.`;
@@ -147,6 +175,7 @@ async function renderPage(pageNumber) {
 
   const textContent = await page.getTextContent();
   currentPageText = pageTextFromItems(textContent.items);
+  pageTextCache.set(pageNumber, currentPageText);
   textLayer.replaceChildren();
   textLayer.style.width = `${Math.floor(viewport.width)}px`;
   textLayer.style.height = `${Math.floor(viewport.height)}px`;
@@ -165,6 +194,7 @@ async function renderPage(pageNumber) {
 async function openLocalPdf(file) {
   const data = new Uint8Array(await file.arrayBuffer());
   pdfDocument?.destroy();
+  pageTextCache.clear();
   pdfDocument = await pdfjsLib.getDocument({
     data,
     disableAutoFetch: true,
@@ -209,7 +239,7 @@ document.addEventListener("selectionchange", () => {
   const selection = window.getSelection();
   const selected = normalizeText(selection?.toString());
   if (!selected || !textLayer.contains(selection?.anchorNode)) return;
-  showCandidate(selected, selectedTextLayerLine(selection));
+  void showCandidate(selected, selectedTextLayerLine(selection));
 });
 
 textLayer.addEventListener("pointerdown", event => {
@@ -229,7 +259,7 @@ textLayer.addEventListener("pointerup", event => {
   const line = textLayerLineForSpan(span);
   if (selected && line) {
     window.getSelection()?.removeAllRanges();
-    showCandidate(selected, line);
+    void showCandidate(selected, line);
   }
 });
 
